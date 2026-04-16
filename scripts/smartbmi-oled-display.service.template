@@ -1,0 +1,16 @@
+[Unit]
+Description=Smart BMI OLED Status Display
+After=network-online.target smartbmi-backend.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__APP_USER__
+WorkingDirectory=__APP_DIR__
+ExecStart=__APP_DIR__/.venv/bin/python __APP_DIR__/scripts/oled_status_display.py
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

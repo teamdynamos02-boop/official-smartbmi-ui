@@ -1,0 +1,13 @@
+
+> smartbmi-ui@1.0.0 serve:prod
+> serve -s dist -l 4173
+
+ INFO  Accepting connections at http://localhost:4173
+ HTTP  4/13/2026 4:00:38 PM ::1 GET /?view=admin
+ HTTP  4/13/2026 4:00:38 PM ::1 Returned 200 in 103 ms
+ HTTP  4/13/2026 4:00:38 PM ::1 GET /assets/index-Bue_q7T4.js
+ HTTP  4/13/2026 4:00:38 PM ::1 GET /assets/index-B1vm02Vu.css
+ HTTP  4/13/2026 4:00:38 PM ::1 Returned 200 in 19 ms
+ HTTP  4/13/2026 4:00:38 PM ::1 Returned 200 in 28 ms
+ HTTP  4/13/2026 4:00:39 PM ::1 GET /favicon.ico
+ HTTP  4/13/2026 4:00:39 PM ::1 Returned 200 in 10 ms

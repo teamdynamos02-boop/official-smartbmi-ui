@@ -1,0 +1,42 @@
+{
+  "users": {
+    "20055": {
+      "profile": {},
+      "measurements": [
+        {
+          "id": "measurement-1776183740416-xedxgn5n",
+          "weightKg": 64.3,
+          "heightCm": 154,
+          "bmi": 27.1,
+          "category": "Overweight",
+          "capturedAt": 1776183740416,
+          "capturedAtFormatted": "04/15/2026 00:22:20",
+          "capturedDate": "04/15/2026",
+          "capturedTime": "00:22:20"
+        },
+        {
+          "id": "measurement-1776188365600-c86j0qdy",
+          "weightKg": 64,
+          "heightCm": 153,
+          "bmi": 27.3,
+          "category": "Overweight",
+          "capturedAt": 1776188365600,
+          "capturedAtFormatted": "04/15/2026 01:39:25",
+          "capturedDate": "04/15/2026",
+          "capturedTime": "01:39:25"
+        },
+        {
+          "id": "measurement-1776188476872-iroenlg5",
+          "weightKg": 63.7,
+          "heightCm": 148,
+          "bmi": 29.1,
+          "category": "Overweight",
+          "capturedAt": 1776188476872,
+          "capturedAtFormatted": "04/15/2026 01:41:16",
+          "capturedDate": "04/15/2026",
+          "capturedTime": "01:41:16"
+        }
+      ]
+    }
+  }
+}

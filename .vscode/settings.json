@@ -1,0 +1,7 @@
+{
+    "liveServer.settings.multiRootWorkspaceName": "smartbmi ui",
+    "python.defaultInterpreterPath": "/home/dynamos/face-env/bin/python",
+    "python.analysis.extraPaths": [
+        "/home/dynamos/face-env/lib/python3.13/site-packages"
+    ]
+}

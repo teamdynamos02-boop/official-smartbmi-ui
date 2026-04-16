@@ -1,0 +1,26 @@
+[Unit]
+Description=SmartBMI Frontend
+After=network-online.target smartbmi-backend.service
+Wants=network-online.target
+Requires=smartbmi-backend.service
+
+[Service]
+Type=simple
+User=dynamos
+Group=dynamos
+WorkingDirectory=/home/dynamos/smartbmi-ui
+ExecStartPre=/bin/sleep 10
+ExecStart=/home/dynamos/smartbmi-ui/scripts/start_frontend.sh
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=60
+TimeoutStopSec=20
+KillMode=control-group
+Environment=NODE_ENV=production
+Environment=HOME=/home/dynamos
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=smartbmi-frontend
+
+[Install]
+WantedBy=multi-user.target

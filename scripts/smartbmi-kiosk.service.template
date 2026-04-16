@@ -1,0 +1,16 @@
+[Unit]
+Description=SmartBMI Chromium Kiosk
+After=graphical-session.target smartbmi-frontend.service
+Wants=graphical-session.target
+
+[Service]
+Type=simple
+WorkingDirectory=__APP_DIR__
+ExecStart=__APP_DIR__/scripts/start_kiosk_browser.sh
+Restart=always
+RestartSec=5
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/__APP_USER__/.Xauthority
+
+[Install]
+WantedBy=default.target

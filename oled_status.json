@@ -1,0 +1,19 @@
+{
+  "status": "warning",
+  "detail": "OLED backend unavailable or hardware not ready; heartbeat only. I2C device not found on address: 0x3C; No module named 'board'",
+  "updatedAt": 1776195834284,
+  "lines": [
+    "SmartBMI OFFLINE",
+    "W:--kg H:--cm",
+    "BMI:-- --",
+    "WiFi OK"
+  ],
+  "backend": "heartbeat-only",
+  "device": {
+    "width": 128,
+    "height": 64,
+    "i2cPort": 1,
+    "i2cAddress": "0x3c",
+    "i2cAddressSource": "candidate-default"
+  }
+}

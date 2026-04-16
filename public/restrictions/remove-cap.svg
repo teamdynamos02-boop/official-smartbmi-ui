@@ -1,0 +1,13 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" fill="none">
+  <rect x="6" y="6" width="148" height="148" rx="14" fill="#f8fcff" stroke="#9ecfe1" stroke-width="2"/>
+
+  <!-- baseball cap profile -->
+  <path d="M42 90c2-18 16-33 35-36 18-3 35 6 44 21l5 8-84 7Z" fill="#023859"/>
+  <path d="M82 84h49c-3 9-12 16-22 18l-30 6 3-24Z" fill="#26658c"/>
+  <path d="M62 67c8-5 18-7 27-5" stroke="#a7ebf2" stroke-width="4" stroke-linecap="round"/>
+  <path d="M46 90h34" stroke="#a7ebf2" stroke-width="4" stroke-linecap="round" opacity="0.75"/>
+
+  <!-- prohibition -->
+  <circle cx="80" cy="80" r="50" stroke="#e12d39" stroke-width="8"/>
+  <path d="M45 115 115 45" stroke="#e12d39" stroke-width="8" stroke-linecap="round"/>
+</svg>

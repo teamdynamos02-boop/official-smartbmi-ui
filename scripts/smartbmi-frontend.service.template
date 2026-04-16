@@ -1,0 +1,26 @@
+[Unit]
+Description=SmartBMI Frontend
+After=network-online.target smartbmi-backend.service
+Wants=network-online.target
+Requires=smartbmi-backend.service
+
+[Service]
+Type=simple
+User=__APP_USER__
+Group=__APP_USER__
+WorkingDirectory=__APP_DIR__
+ExecStartPre=/bin/sleep 10
+ExecStart=__APP_DIR__/scripts/start_frontend.sh
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=60
+TimeoutStopSec=20
+KillMode=control-group
+Environment=NODE_ENV=production
+Environment=HOME=/home/__APP_USER__
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=smartbmi-frontend
+
+[Install]
+WantedBy=multi-user.target

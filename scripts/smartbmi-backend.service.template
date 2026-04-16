@@ -1,0 +1,27 @@
+[Unit]
+Description=SmartBMI Backend API
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=__APP_USER__
+Group=__APP_USER__
+WorkingDirectory=__APP_DIR__
+ExecStartPre=/bin/sleep 15
+ExecStart=__APP_DIR__/scripts/start_backend.sh
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=90
+TimeoutStopSec=20
+KillMode=control-group
+Environment=PYTHONUNBUFFERED=1
+Environment=HOME=/home/__APP_USER__
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=smartbmi-backend
+
+[Install]
+WantedBy=multi-user.target

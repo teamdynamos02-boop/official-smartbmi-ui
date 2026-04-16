@@ -1,0 +1,15 @@
+[Unit]
+Description=Smart BMI Raspberry Pi Hardware Reporter
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/pi/smartbmi-ui
+ExecStart=/home/pi/smartbmi-ui/.venv/bin/python /home/pi/smartbmi-ui/scripts/pi_hardware_reporter.py
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

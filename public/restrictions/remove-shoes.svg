@@ -1,0 +1,16 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160" fill="none">
+  <rect x="6" y="6" width="148" height="148" rx="14" fill="#f8fcff" stroke="#9ecfe1" stroke-width="2"/>
+
+  <!-- sneaker side profile -->
+  <path d="M20 109h120v10H20z" fill="#26658c" opacity="0.2"/>
+  <path d="M24 103h57c8 0 16-2 22-7l9-8c3-3 7-5 12-5h7v16c0 6-5 10-10 10H24v-6Z" fill="#023859"/>
+  <path d="M33 90h36c8 0 14-2 20-6l7-5" stroke="#a7ebf2" stroke-width="4" stroke-linecap="round"/>
+  <path d="M34 103h82" stroke="#a7ebf2" stroke-width="3" stroke-linecap="round" opacity="0.6"/>
+  <circle cx="52" cy="98" r="2.5" fill="#a7ebf2"/>
+  <circle cx="60" cy="96" r="2.5" fill="#a7ebf2"/>
+  <circle cx="68" cy="94" r="2.5" fill="#a7ebf2"/>
+
+  <!-- prohibition -->
+  <circle cx="80" cy="80" r="50" stroke="#e12d39" stroke-width="8"/>
+  <path d="M45 115 115 45" stroke="#e12d39" stroke-width="8" stroke-linecap="round"/>
+</svg>

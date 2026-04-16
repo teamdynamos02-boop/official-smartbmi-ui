@@ -1,0 +1,46 @@
+Backend ready: http://127.0.0.1:5000/face/status
+Pi camera ready: http://127.0.0.1:5000/camera/pi/status
+System status ready: http://127.0.0.1:5000/system/status
+Frontend ready: http://127.0.0.1:4173
+Allowing camera stack to settle for 4s...
+[1866:2509:0416/002511.256424:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+[1866:2509:0416/002540.004200:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+[1866:2509:0416/002633.928658:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+[1866:1866:0416/002728.083884:ERROR:ui/compositor/compositor_animation_observer.cc:65] CompositorAnimationObserver is active for too long (139.445s) location=TabIcon@chrome/browser/ui/views/tabs/tab/tab_icon.cc:98
+Backend ready: http://127.0.0.1:5000/face/status
+Pi camera ready: http://127.0.0.1:5000/camera/pi/status
+System status ready: http://127.0.0.1:5000/system/status
+Frontend ready: http://127.0.0.1:4173
+Allowing camera stack to settle for 4s...
+[1748:1748:0417/020057.969749:ERROR:chrome/browser/process_singleton_posix.cc:345] Failed to create /home/dynamos/.config/smartbmi-kiosk-browser/SingletonLock: File exists (17)
+Opening in existing browser session.
+Backend ready: http://127.0.0.1:5000/face/status
+Pi camera ready: http://127.0.0.1:5000/camera/pi/status
+System status ready: http://127.0.0.1:5000/system/status
+Frontend ready: http://127.0.0.1:4173
+Allowing camera stack to settle for 4s...
+[1754:2627:0417/041645.283612:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+[1754:2627:0417/041709.409876:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+[1754:2627:0417/041806.911320:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+[1754:2627:0417/041945.349536:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+[1754:2627:0417/042245.098275:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+Backend ready: http://127.0.0.1:5000/face/status
+Pi camera ready: http://127.0.0.1:5000/camera/pi/status
+System status ready: http://127.0.0.1:5000/system/status
+Frontend ready: http://127.0.0.1:4173
+Allowing camera stack to settle for 4s...
+[1750:2448:0417/042946.772221:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+[1750:2448:0417/043008.079812:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+[1750:2448:0417/043107.985691:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+[1750:2448:0417/043246.166801:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+[1750:2448:0417/043554.811990:ERROR:google_apis/gcm/engine/registration_request.cc:291] Registration response error message: DEPRECATED_ENDPOINT
+[1750:2448:0417/043624.423853:ERROR:google_apis/gcm/engine/connection_factory_impl.cc:483] ConnectionHandler failed with net error: -2
+[1750:1750:0417/043624.424330:ERROR:content/common/zygote/zygote_communication_linux.cc:291] Failed to send GetTerminationStatus message to zygote
+Gdk-Message: 04:36:24.577: Error reading events from display: Broken pipe
+Backend ready: http://127.0.0.1:5000/face/status
+Pi camera ready: http://127.0.0.1:5000/camera/pi/status
+System status ready: http://127.0.0.1:5000/system/status
+Frontend ready: http://127.0.0.1:4173
+Allowing camera stack to settle for 4s...
+[1856:1856:0417/043716.461803:ERROR:chrome/browser/process_singleton_posix.cc:345] Failed to create /home/dynamos/.config/smartbmi-kiosk-browser/SingletonLock: File exists (17)
+Opening in existing browser session.
