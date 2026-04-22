@@ -29,6 +29,10 @@ export default function MeasurePage({
   const displayDigits = isWeight
     ? String(value ?? "--.- kg").replace(/\s*kg\s*$/i, "")
     : String(value ?? "--");
+  const hasLiveDigits = isWeight
+    ? displayDigits !== "--.-"
+    : displayDigits !== "--";
+  const meterModeLabel = isDone ? "Locked" : (hasLiveDigits ? "Live" : "Scanning");
   const centerInstruction = isWeight
     ? {
         title: "Do Not Move",
@@ -133,7 +137,7 @@ export default function MeasurePage({
           <div className={`meter-wrap measure-meter ${isWeight ? "measure-meter-weight" : "measure-meter-height"}`}>
             <div className="measure-metric">
               <span className="meter-label">{label}</span>
-              <span className="measure-sub">Auto</span>
+              <span className="measure-sub">{meterModeLabel}</span>
             </div>
             <motion.strong
               animate={{ scale: loading ? [1, 1.05, 1] : [1, 1.02, 1] }}

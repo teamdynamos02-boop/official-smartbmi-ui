@@ -7,10 +7,11 @@ Wants=graphical-session.target
 Type=simple
 WorkingDirectory=__APP_DIR__
 ExecStart=__APP_DIR__/scripts/start_kiosk_browser.sh
-Restart=always
+Restart=on-failure
 RestartSec=5
 Environment=DISPLAY=:0
 Environment=XAUTHORITY=/home/__APP_USER__/.Xauthority
+Environment=SMARTBMI_ENABLE_KIOSK_BROWSER=false
 
 [Install]
 WantedBy=default.target

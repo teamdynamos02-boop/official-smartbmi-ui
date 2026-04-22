@@ -18,6 +18,7 @@ import { saveMeasurement, upsertUserProfile, getUserMeasurements, getUserProfile
 import { captureFrame, checkLiveness, checkPoseMetrics, checkRestrictions, deleteFaceUser, getFaceStatus, identifyFace, registerFace } from "./services/face";
 import AdminPage from "./pages/AdminPage";
 import { collectAndSyncSystemMonitor } from "./services/systemMonitor";
+import { computeBmiAssessment } from "./services/bmi";
 
 function randomUser() {
   return {
@@ -34,14 +35,12 @@ function randomUser() {
   };
 }
 
-function computeBmi(weightKg, heightCm) {
-  const meters = heightCm / 100;
-  const bmi = weightKg / (meters * meters);
-  let category = "Obese";
-  if (bmi < 18.5) category = "Underweight";
-  else if (bmi < 25) category = "Normal";
-  else if (bmi < 30) category = "Overweight";
-  return { bmi: Number(bmi.toFixed(1)), category };
+function computeBmi(weightKg, heightCm, age, sex) {
+  const assessment = computeBmiAssessment({ weightKg, heightCm, age, sex });
+  return {
+    bmi: assessment.bmi,
+    category: assessment.category,
+  };
 }
 
 function newUserFormDefaults() {
@@ -128,6 +127,9 @@ export default function App() {
   const MEASURE_AUTO_NEXT_SECONDS = 1;
   const MEASURE_CAPTURE_WINDOW_SECONDS = mode === "registration" ? 5 : 3;
   const MEASURE_CAPTURE_WINDOW_MS = MEASURE_CAPTURE_WINDOW_SECONDS * 1000;
+  const SENSOR_FRONTEND_CONFIRM_MS = Number(import.meta.env.VITE_SENSOR_FRONTEND_CONFIRM_MS ?? 350);
+  const WEIGHT_MEASURE_MAX_TOTAL_MS = Number(import.meta.env.VITE_WEIGHT_MEASURE_MAX_TOTAL_MS ?? 4500);
+  const HEIGHT_MEASURE_MAX_TOTAL_MS = Number(import.meta.env.VITE_HEIGHT_MEASURE_MAX_TOTAL_MS ?? 5500);
   const MAX_SENSOR_RETRIES = 5;
   const SYSTEM_MONITOR_POLL_MS = Number(import.meta.env.VITE_SYSTEM_MONITOR_POLL_MS ?? 15000);
   const BASIC_FACE_FLOW = String(import.meta.env.VITE_BASIC_FACE_FLOW ?? "true").toLowerCase() === "true";
@@ -1162,6 +1164,7 @@ export default function App() {
     weightRequestAbortRef.current = controller;
 
     queue(async () => {
+      const measurementStartedAt = Date.now();
       try {
         await resetSensorSession("weight", controller.signal);
       } catch (error) {
@@ -1171,7 +1174,7 @@ export default function App() {
       while (!controller.signal.aborted) {
         try {
           const weightKg = await readWeightKg(controller.signal, {
-            stableConfirmMs: MEASURE_CAPTURE_WINDOW_MS,
+            stableConfirmMs: SENSOR_FRONTEND_CONFIRM_MS,
             onSample: (liveWeightKg, reading) => {
               if (controller.signal.aborted) return;
               const uiWeightKg = reading?.displayValueForUi ?? liveWeightKg;
@@ -1202,7 +1205,18 @@ export default function App() {
           return;
         } catch (error) {
           if (controller.signal.aborted) return;
+          const elapsedMs = Date.now() - measurementStartedAt;
           if (isSensorWaitingError(error)) {
+            if (elapsedMs >= WEIGHT_MEASURE_MAX_TOTAL_MS) {
+              setWeightStatusType("incomplete");
+              setWeightStatusLabel("ADJUST");
+              setWeightStatus("Stand centered and hold still. Scale is still active.");
+              setWeightReturnMessage("");
+              setWeightCaptureSecondsLeft(0);
+              showMeasureAlert("weight", "Adjust Position", "Stand centered, keep both feet planted, and hold still. The scale will keep reading.");
+              await sleep(350);
+              continue;
+            }
             setUser((u) => ({ ...u, weightKg: null }));
             setWeightStatusType("incomplete");
             setWeightStatusLabel("WAITING");
@@ -1214,6 +1228,16 @@ export default function App() {
             continue;
           }
           if (isSensorUnstableError(error)) {
+            if (elapsedMs >= WEIGHT_MEASURE_MAX_TOTAL_MS) {
+              setWeightStatusType("incomplete");
+              setWeightStatusLabel("ADJUST");
+              setWeightStatus("Weight is still moving. Hold still to lock.");
+              setWeightReturnMessage("");
+              setWeightCaptureSecondsLeft(0);
+              showMeasureAlert("weight", "Hold Still", "Do not shift your feet. The scale is still reading.");
+              await sleep(350);
+              continue;
+            }
             setWeightStatusType("incomplete");
             setWeightStatusLabel("HOLD STILL");
             setWeightStatus("Waiting for stable reading...");
@@ -1226,17 +1250,14 @@ export default function App() {
 
           const nextRetryCount = weightRetryCount + 1;
           setWeightRetryCount(nextRetryCount);
-          setWeightStatusType("error");
-          setWeightStatusLabel(`INCOMPLETE | ${getSensorErrorTag(error)} | RETRY ${nextRetryCount}/${MAX_SENSOR_RETRIES}`);
-          setWeightStatus("Weight measurement failed.");
+          setWeightStatusType("incomplete");
+          setWeightStatusLabel("ADJUST");
+          setWeightStatus("Scale is still active. Stand centered and hold still.");
           setWeightCaptureSecondsLeft(0);
-          if (nextRetryCount >= MAX_SENSOR_RETRIES) {
-            await discardIncompleteEnrollment();
-            startReturnToMenuCountdown("Weight");
-          } else {
-            setWeightReturnMessage("Press Retry to measure again.");
-          }
-          return;
+          setWeightReturnMessage("");
+          showMeasureAlert("weight", getSensorErrorTag(error), "The scale is still active. Stand centered and hold still.");
+          await sleep(500);
+          continue;
         }
       }
     }, 160);
@@ -1271,6 +1292,7 @@ export default function App() {
     heightRequestAbortRef.current = controller;
 
     queue(async () => {
+      const measurementStartedAt = Date.now();
       try {
         await resetSensorSession("height", controller.signal);
       } catch (error) {
@@ -1280,13 +1302,13 @@ export default function App() {
       while (!controller.signal.aborted) {
         try {
           const heightCm = await readHeightCm(controller.signal, {
-            stableConfirmMs: MEASURE_CAPTURE_WINDOW_MS,
+            stableConfirmMs: SENSOR_FRONTEND_CONFIRM_MS,
             onSample: (liveHeightCm, reading) => {
               if (controller.signal.aborted) return;
               const uiHeightCm = reading?.displayValueForUi ?? liveHeightCm;
               setUser((u) => {
                 const next = { ...u, heightCm: uiHeightCm };
-                const bmiData = computeBmi(next.weightKg, uiHeightCm);
+                const bmiData = computeBmi(next.weightKg, uiHeightCm, next.age, next.sex);
                 return { ...next, ...bmiData };
               });
               setHeightCaptureSecondsLeft(Math.max(0, Math.ceil((reading?.confirmationRemainingMs ?? 0) / 1000)));
@@ -1304,7 +1326,7 @@ export default function App() {
           if (controller.signal.aborted) return;
           setUser((u) => {
             const next = { ...u, heightCm };
-            const bmiData = computeBmi(next.weightKg, heightCm);
+            const bmiData = computeBmi(next.weightKg, heightCm, next.age, next.sex);
             return { ...next, ...bmiData };
           });
           setHeightCaptureSecondsLeft(0);
@@ -1320,7 +1342,18 @@ export default function App() {
           return;
         } catch (error) {
           if (controller.signal.aborted) return;
+          const elapsedMs = Date.now() - measurementStartedAt;
           if (isSensorWaitingError(error)) {
+            if (elapsedMs >= HEIGHT_MEASURE_MAX_TOTAL_MS) {
+              setHeightStatusType("incomplete");
+              setHeightStatusLabel("ADJUST");
+              setHeightStatus("Stand centered under the sensor. Height scan is still active.");
+              setHeightReturnMessage("");
+              setHeightCaptureSecondsLeft(0);
+              showMeasureAlert("height", "Adjust Position", "Stand straight under the sensor, keep your head level, and move hair away if needed.");
+              await sleep(350);
+              continue;
+            }
             setUser((u) => ({ ...u, heightCm: null }));
             setHeightStatusType("incomplete");
             setHeightStatusLabel("WAITING");
@@ -1332,6 +1365,16 @@ export default function App() {
             continue;
           }
           if (isSensorUnstableError(error)) {
+            if (elapsedMs >= HEIGHT_MEASURE_MAX_TOTAL_MS) {
+              setHeightStatusType("incomplete");
+              setHeightStatusLabel("ADJUST");
+              setHeightStatus("Height is still stabilizing. Hold your posture.");
+              setHeightReturnMessage("");
+              setHeightCaptureSecondsLeft(0);
+              showMeasureAlert("height", "Hold Still", "Keep your chin level and stand directly below the sensor. The scan is still active.");
+              await sleep(350);
+              continue;
+            }
             setHeightStatusType("incomplete");
             setHeightStatusLabel("HOLD STILL");
             setHeightStatus("Waiting for stable reading...");
@@ -1344,17 +1387,14 @@ export default function App() {
 
           const nextRetryCount = heightRetryCount + 1;
           setHeightRetryCount(nextRetryCount);
-          setHeightStatusType("error");
-          setHeightStatusLabel(`INCOMPLETE | ${getSensorErrorTag(error)} | RETRY ${nextRetryCount}/${MAX_SENSOR_RETRIES}`);
-          setHeightStatus("Height measurement failed.");
+          setHeightStatusType("incomplete");
+          setHeightStatusLabel("ADJUST");
+          setHeightStatus("Height scan is still active. Stand centered and hold still.");
           setHeightCaptureSecondsLeft(0);
-          if (nextRetryCount >= MAX_SENSOR_RETRIES) {
-            await discardIncompleteEnrollment();
-            startReturnToMenuCountdown("Height");
-          } else {
-            setHeightReturnMessage("Press Retry to measure again.");
-          }
-          return;
+          setHeightReturnMessage("");
+          showMeasureAlert("height", getSensorErrorTag(error), "The height sensor is still active. Stand centered and hold still.");
+          await sleep(500);
+          continue;
         }
       }
     }, 160);
@@ -1612,7 +1652,7 @@ export default function App() {
       if (user.isGuest) {
         setUser((prev) => {
           const next = { ...prev, age: Number(newUserForm.age), sex: newUserForm.sex, name: prev.name || "Guest" };
-          const bmiData = computeBmi(next.weightKg, next.heightCm);
+          const bmiData = computeBmi(next.weightKg, next.heightCm, next.age, next.sex);
           return { ...next, ...bmiData };
         });
         setScreen("result");

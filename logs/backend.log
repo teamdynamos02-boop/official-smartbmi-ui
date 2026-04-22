@@ -1,0 +1,2 @@
+[0;93m2026-04-23 02:27:15.375780158 [W:onnxruntime:Default, device_discovery.cc:325 DiscoverDevicesForPlatform] GPU device discovery failed: device_discovery.cc:92 ReadFileContents Failed to open file: "/sys/class/drm/card1/device/vendor"[m
+INFO:waitress:Serving on http://0.0.0.0:5000

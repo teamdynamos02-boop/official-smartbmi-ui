@@ -13,6 +13,7 @@ KIOSK_BROWSER_LOG="${LOG_DIR}/kiosk-browser.log"
 LOCK_FILE="/tmp/smartbmi-kiosk.lock"
 USE_LIBCAMERIFY="${SMARTBMI_KIOSK_USE_LIBCAMERIFY:-false}"
 POST_READY_CAMERA_SETTLE_SECONDS="${SMARTBMI_POST_READY_CAMERA_SETTLE_SECONDS:-4}"
+ENABLE_KIOSK_BROWSER="${SMARTBMI_ENABLE_KIOSK_BROWSER:-false}"
 
 mkdir -p "${LOG_DIR}"
 touch "${LOG_FILE}"
@@ -21,6 +22,11 @@ exec >>"${LOG_FILE}" 2>&1
 
 echo
 echo "[$(date '+%F %T')] Smart BMI kiosk launcher started"
+
+if [[ ! "${ENABLE_KIOSK_BROWSER}" =~ ^([Tt][Rr][Uu][Ee]|1|[Yy][Ee][Ss]|[Oo][Nn])$ ]]; then
+  echo "[$(date '+%F %T')] Chromium auto-launch disabled for calibration mode."
+  exit 0
+fi
 
 export DISPLAY="${DISPLAY:-:0}"
 export XAUTHORITY="${XAUTHORITY:-/home/dynamos/.Xauthority}"
@@ -125,8 +131,6 @@ exec env -u CHROMIUM_FLAGS -u CHROME_EXTRA_ARGS -u CHROMIUM_USER_FLAGS -u CHROME
   --ozone-platform=x11 \
   --check-for-update-interval=31536000 \
   --autoplay-policy=no-user-gesture-required \
-  --start-maximized \
   --app="${APP_URL}" \
-  --kiosk \
   --incognito \
   "${APP_URL}" >>"${KIOSK_BROWSER_LOG}" 2>&1

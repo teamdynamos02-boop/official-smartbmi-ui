@@ -3,19 +3,22 @@ const WEIGHT_ENDPOINT = import.meta.env.VITE_SENSOR_WEIGHT_ENDPOINT ?? "/sensor/
 const HEIGHT_ENDPOINT = import.meta.env.VITE_SENSOR_HEIGHT_ENDPOINT ?? "/sensor/height";
 const RESET_ENDPOINT = import.meta.env.VITE_SENSOR_RESET_ENDPOINT ?? "/sensor/reset";
 const SENSOR_TIMEOUT_MS = Number(import.meta.env.VITE_SENSOR_TIMEOUT_MS ?? 6000);
-const SENSOR_SAMPLE_INTERVAL_MS = Number(import.meta.env.VITE_SENSOR_SAMPLE_INTERVAL_MS ?? 120);
+const SENSOR_SAMPLE_INTERVAL_MS = Number(import.meta.env.VITE_SENSOR_SAMPLE_INTERVAL_MS ?? 90);
 const SENSOR_SINGLE_READ_TIMEOUT_MS = Number(import.meta.env.VITE_SENSOR_SINGLE_READ_TIMEOUT_MS ?? 2500);
 const SENSOR_MAX_VALUE_AGE_MS = Number(import.meta.env.VITE_SENSOR_MAX_VALUE_AGE_MS ?? 2500);
 const SENSOR_REQUIRED_STABLE_POLLS = Number(import.meta.env.VITE_SENSOR_REQUIRED_STABLE_POLLS ?? 1);
-const SENSOR_STABLE_CONFIRM_MS = Number(import.meta.env.VITE_SENSOR_STABLE_CONFIRM_MS ?? 3000);
-const SENSOR_NO_LIVE_TIMEOUT_MS = Number(import.meta.env.VITE_SENSOR_NO_LIVE_TIMEOUT_MS ?? 5000);
-const SENSOR_ACTIVE_MEASURE_MAX_MS = Number(import.meta.env.VITE_SENSOR_ACTIVE_MEASURE_MAX_MS ?? 15000);
+const SENSOR_STABLE_CONFIRM_MS = Number(import.meta.env.VITE_SENSOR_STABLE_CONFIRM_MS ?? 250);
+const SENSOR_NO_LIVE_TIMEOUT_MS = Number(import.meta.env.VITE_SENSOR_NO_LIVE_TIMEOUT_MS ?? 2200);
+const SENSOR_ACTIVE_MEASURE_MAX_MS = Number(import.meta.env.VITE_SENSOR_ACTIVE_MEASURE_MAX_MS ?? 3000);
 const SENSOR_NO_SERIAL_TIMEOUT_MS = Number(import.meta.env.VITE_SENSOR_NO_SERIAL_TIMEOUT_MS ?? 2200);
 const SENSOR_WEIGHT_STABLE_TOLERANCE_KG = Number(import.meta.env.VITE_SENSOR_WEIGHT_STABLE_TOLERANCE_KG ?? 0.2);
 const SENSOR_HEIGHT_STABLE_TOLERANCE_CM = Number(import.meta.env.VITE_SENSOR_HEIGHT_STABLE_TOLERANCE_CM ?? 1);
 const SENSOR_WEIGHT_RESET_TOLERANCE_KG = Number(import.meta.env.VITE_SENSOR_WEIGHT_RESET_TOLERANCE_KG ?? 0.8);
 const SENSOR_HEIGHT_RESET_TOLERANCE_CM = Number(import.meta.env.VITE_SENSOR_HEIGHT_RESET_TOLERANCE_CM ?? 3);
 const SENSOR_WEIGHT_MIN_VALID_KG = Number(import.meta.env.VITE_SENSOR_WEIGHT_MIN_VALID_KG ?? 5);
+const SENSOR_HEIGHT_MIN_VALID_CM = Number(import.meta.env.VITE_SENSOR_HEIGHT_MIN_VALID_CM ?? 145);
+const SENSOR_WEIGHT_MIN_DISPLAY_KG = Number(import.meta.env.VITE_SENSOR_WEIGHT_MIN_DISPLAY_KG ?? 1);
+const SENSOR_HEIGHT_MIN_DISPLAY_CM = Number(import.meta.env.VITE_SENSOR_HEIGHT_MIN_DISPLAY_CM ?? 120);
 
 export class SensorApiError extends Error {
   constructor(message) {
@@ -127,6 +130,47 @@ async function requestSensorReading(endpoint, keys, liveKeys, signal) {
   }
 }
 
+export async function getSensorEndpointSnapshot(endpoint, signal) {
+  const controller = new AbortController();
+  const timeoutMs = Math.max(250, Math.min(SENSOR_TIMEOUT_MS, SENSOR_SINGLE_READ_TIMEOUT_MS));
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const onAbort = () => controller.abort();
+  if (signal) signal.addEventListener("abort", onAbort, { once: true });
+
+  try {
+    const response = await fetch(joinUrl(SENSOR_API_BASE, endpoint), {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new SensorApiError(`Sensor API failed with HTTP ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new SensorApiError("Sensor request timed out");
+    }
+    if (error instanceof SensorApiError) throw error;
+    throw new SensorApiError("Could not connect to sensor API");
+  } finally {
+    clearTimeout(timeoutId);
+    if (signal) signal.removeEventListener("abort", onAbort);
+  }
+}
+
+export async function getLiveSensorSnapshot(signal) {
+  const [weight, height, live] = await Promise.all([
+    getSensorEndpointSnapshot(WEIGHT_ENDPOINT, signal),
+    getSensorEndpointSnapshot(HEIGHT_ENDPOINT, signal),
+    getSensorEndpointSnapshot("/sensor/live", signal),
+  ]);
+
+  return { weight, height, live };
+}
+
 export async function resetSensorSession(kind, signal) {
   const controller = new AbortController();
   const timeoutMs = Math.max(250, Math.min(SENSOR_TIMEOUT_MS, SENSOR_SINGLE_READ_TIMEOUT_MS));
@@ -189,8 +233,13 @@ async function readStableSensorValue({
   liveFallbackAfterMs = null,
   allowLiveFinalizeOnTimeout = true,
   isMeaningfulValue = (value) => Number.isFinite(value) && value >= 0,
+  isDisplayValue = isMeaningfulValue,
 }) {
   const startedAt = Date.now();
+  const maxMeasureMs = Math.max(
+    SENSOR_ACTIVE_MEASURE_MAX_MS,
+    Number.isFinite(stableConfirmMs) ? stableConfirmMs + 900 : SENSOR_ACTIVE_MEASURE_MAX_MS,
+  );
   let lastError = null;
   let stablePollCount = 0;
   let sawLiveData = false;
@@ -202,7 +251,7 @@ async function readStableSensorValue({
   let lockedStableValue = null;
   let confirmedStableSamples = [];
 
-  while ((Date.now() - startedAt) < SENSOR_ACTIVE_MEASURE_MAX_MS) {
+  while ((Date.now() - startedAt) < maxMeasureMs) {
     if (signal?.aborted) {
       throw new SensorApiError("Sensor request timed out");
     }
@@ -285,7 +334,7 @@ async function readStableSensorValue({
         confirmedStableSamples = [];
       }
 
-      if (typeof onSample === "function" && reading.liveFresh !== false && isMeaningfulValue(reading.displayValue)) {
+      if (typeof onSample === "function" && reading.liveFresh !== false && isDisplayValue(reading.displayValue)) {
         onSample(normalize(reading.displayValue), {
           ...reading,
           confirmationRemainingMs: 0,
@@ -357,6 +406,7 @@ export async function readWeightKg(signal, options = {}) {
     liveFallbackAfterMs: options.liveFallbackAfterMs ?? null,
     allowLiveFinalizeOnTimeout: false,
     isMeaningfulValue: (value) => Number.isFinite(value) && value >= SENSOR_WEIGHT_MIN_VALID_KG,
+    isDisplayValue: (value) => Number.isFinite(value) && value >= SENSOR_WEIGHT_MIN_DISPLAY_KG,
   });
 }
 
@@ -373,7 +423,9 @@ export async function readHeightCm(signal, options = {}) {
     resetTolerance: SENSOR_HEIGHT_RESET_TOLERANCE_CM,
     finalize: (values) => Math.round(getMedianValue(values) ?? values.at(-1) ?? 0),
     label: "height",
-    liveFallbackAfterMs: options.liveFallbackAfterMs ?? 4500,
-    allowLiveFinalizeOnTimeout: true,
+    liveFallbackAfterMs: options.liveFallbackAfterMs ?? null,
+    allowLiveFinalizeOnTimeout: false,
+    isMeaningfulValue: (value) => Number.isFinite(value) && value >= SENSOR_HEIGHT_MIN_VALID_CM,
+    isDisplayValue: (value) => Number.isFinite(value) && value >= SENSOR_HEIGHT_MIN_DISPLAY_CM,
   });
 }

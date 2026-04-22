@@ -8,7 +8,7 @@ This project now includes a production-style kiosk setup so the machine can boot
 - Builds and serves the React frontend from `dist/` on `http://127.0.0.1:4173`
 - Runs the Raspberry Pi hardware reporter at boot
 - Runs the OLED updater at boot when present
-- Launches Chromium in kiosk mode after the graphical session starts
+- Can launch Chromium after the graphical session starts when kiosk browser mode is enabled
 - Waits for the backend and frontend to answer before opening the browser
 - Enables desktop autologin for the kiosk user so no password prompt is needed after reboot
 - Lets the Arduino firmware auto-run on power, while the backend claims the serial port and reconnects automatically if the stream stalls
@@ -61,6 +61,7 @@ sudo -u "$USER" systemctl --user restart smartbmi-kiosk.service
 
 - Backend debug mode is now controlled by env vars and defaults to `false`.
 - The browser launcher script automatically looks for `chromium-browser`, `chromium`, or Google Chrome.
+- Calibration mode currently defaults `SMARTBMI_ENABLE_KIOSK_BROWSER=false`, so Chromium will not auto-open until that env var is explicitly set to `true`.
 - The frontend service uses `npm run serve:prod`, which serves the built `dist/` output.
 - The installer also attempts to install the face-recognition and detection packages used by the camera pipeline. Those can take longer on Raspberry Pi hardware.
 - You do not need to type or store the Raspberry Pi password for kiosk startup. LightDM autologin signs in the kiosk user automatically.

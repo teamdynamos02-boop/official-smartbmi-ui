@@ -37,6 +37,230 @@
           "capturedTime": "01:41:16"
         }
       ]
+    },
+    "guest-1776618740370": {
+      "profile": {},
+      "measurements": [
+        {
+          "id": "measurement-1776618747157-khrlgrbi",
+          "weightKg": 62.8,
+          "heightCm": 153,
+          "bmi": 26.8,
+          "category": "Overweight",
+          "capturedAt": 1776618747157,
+          "capturedAtFormatted": "04/20/2026 01:12:27",
+          "capturedDate": "04/20/2026",
+          "capturedTime": "01:12:27"
+        }
+      ]
+    },
+    "guest-1776618807212": {
+      "profile": {},
+      "measurements": [
+        {
+          "id": "measurement-1776618812023-azzwqdl7",
+          "weightKg": 62.2,
+          "heightCm": 150,
+          "bmi": 27.6,
+          "category": "Overweight",
+          "capturedAt": 1776618812023,
+          "capturedAtFormatted": "04/20/2026 01:13:32",
+          "capturedDate": "04/20/2026",
+          "capturedTime": "01:13:32"
+        }
+      ]
+    },
+    "guest-1776618862413": {
+      "profile": {},
+      "measurements": [
+        {
+          "id": "measurement-1776618867098-ubz8o50k",
+          "weightKg": 63.7,
+          "heightCm": 155,
+          "bmi": 26.5,
+          "category": "Overweight",
+          "capturedAt": 1776618867098,
+          "capturedAtFormatted": "04/20/2026 01:14:27",
+          "capturedDate": "04/20/2026",
+          "capturedTime": "01:14:27"
+        }
+      ]
+    },
+    "guest-1776619983830": {
+      "profile": {},
+      "measurements": [
+        {
+          "id": "measurement-1776619992109-onqf4sfn",
+          "weightKg": 64.5,
+          "heightCm": 154,
+          "bmi": 27.2,
+          "category": "Overweight",
+          "capturedAt": 1776619992109,
+          "capturedAtFormatted": "04/20/2026 01:33:12",
+          "capturedDate": "04/20/2026",
+          "capturedTime": "01:33:12"
+        }
+      ]
+    },
+    "guest-1776620057181": {
+      "profile": {},
+      "measurements": [
+        {
+          "id": "measurement-1776620064736-436wq5au",
+          "weightKg": 64.7,
+          "heightCm": 91,
+          "bmi": 78.1,
+          "category": "Obese",
+          "capturedAt": 1776620064736,
+          "capturedAtFormatted": "04/20/2026 01:34:24",
+          "capturedDate": "04/20/2026",
+          "capturedTime": "01:34:24"
+        }
+      ]
+    },
+    "guest-1776620924262": {
+      "profile": {},
+      "measurements": [
+        {
+          "id": "measurement-1776620929150-iywyw2se",
+          "weightKg": 65.2,
+          "heightCm": 82,
+          "bmi": 97,
+          "category": "Obese",
+          "capturedAt": 1776620929150,
+          "capturedAtFormatted": "04/20/2026 01:48:49",
+          "capturedDate": "04/20/2026",
+          "capturedTime": "01:48:49"
+        }
+      ]
+    },
+    "guest-1776621197481": {
+      "profile": {},
+      "measurements": [
+        {
+          "id": "measurement-1776621216353-x6i2xjte",
+          "weightKg": 64.5,
+          "heightCm": 158,
+          "bmi": 25.8,
+          "category": "Overweight",
+          "capturedAt": 1776621216353,
+          "capturedAtFormatted": "04/20/2026 01:53:36",
+          "capturedDate": "04/20/2026",
+          "capturedTime": "01:53:36"
+        }
+      ]
+    },
+    "guest-1776621987891": {
+      "profile": {},
+      "measurements": [
+        {
+          "id": "measurement-1776621995575-z4cp405j",
+          "weightKg": 63.8,
+          "heightCm": 152,
+          "bmi": 27.6,
+          "category": "Overweight",
+          "capturedAt": 1776621995575,
+          "capturedAtFormatted": "04/20/2026 02:06:35",
+          "capturedDate": "04/20/2026",
+          "capturedTime": "02:06:35"
+        }
+      ]
+    },
+    "guest-1776623219346": {
+      "profile": {},
+      "measurements": [
+        {
+          "id": "measurement-1776623224560-9jl44txk",
+          "weightKg": 64.9,
+          "heightCm": 152,
+          "bmi": 28.1,
+          "category": "Overweight",
+          "capturedAt": 1776623224560,
+          "capturedAtFormatted": "04/20/2026 02:27:04",
+          "capturedDate": "04/20/2026",
+          "capturedTime": "02:27:04"
+        }
+      ]
+    },
+    "guest-1776623707738": {
+      "profile": {},
+      "measurements": [
+        {
+          "id": "measurement-1776623712843-tfh1yhk4",
+          "weightKg": 64.7,
+          "heightCm": 156,
+          "bmi": 26.6,
+          "category": "Overweight",
+          "capturedAt": 1776623712843,
+          "capturedAtFormatted": "04/20/2026 02:35:12",
+          "capturedDate": "04/20/2026",
+          "capturedTime": "02:35:12"
+        }
+      ]
+    },
+    "guest-1776625524541": {
+      "profile": {},
+      "measurements": [
+        {
+          "id": "measurement-1776625531101-do5uvwfx",
+          "weightKg": 64.7,
+          "heightCm": 151,
+          "bmi": 28.4,
+          "category": "Overweight",
+          "capturedAt": 1776625531101,
+          "capturedAtFormatted": "04/20/2026 03:05:31",
+          "capturedDate": "04/20/2026",
+          "capturedTime": "03:05:31"
+        }
+      ]
+    },
+    "guest-1776628782337": {
+      "profile": {},
+      "measurements": [
+        {
+          "id": "measurement-1776628786537-dtjq6jxh",
+          "weightKg": 64.1,
+          "heightCm": 152,
+          "bmi": 27.7,
+          "category": "Overweight",
+          "capturedAt": 1776628786537,
+          "capturedAtFormatted": "04/20/2026 03:59:46",
+          "capturedDate": "04/20/2026",
+          "capturedTime": "03:59:46"
+        }
+      ]
+    },
+    "guest-1776629576649": {
+      "profile": {},
+      "measurements": [
+        {
+          "id": "measurement-1776629584290-aye4r2a7",
+          "weightKg": 64.3,
+          "heightCm": 160,
+          "bmi": 25.1,
+          "category": "Overweight",
+          "capturedAt": 1776629584290,
+          "capturedAtFormatted": "04/20/2026 04:13:04",
+          "capturedDate": "04/20/2026",
+          "capturedTime": "04:13:04"
+        }
+      ]
+    },
+    "guest-1776888268747": {
+      "profile": {},
+      "measurements": [
+        {
+          "id": "measurement-1776888274838-onfzkkub",
+          "weightKg": 64.5,
+          "heightCm": 155,
+          "bmi": 26.8,
+          "category": "Overweight",
+          "capturedAt": 1776888274839,
+          "capturedAtFormatted": "04/23/2026 04:04:34",
+          "capturedDate": "04/23/2026",
+          "capturedTime": "04:04:34"
+        }
+      ]
     }
   }
 }

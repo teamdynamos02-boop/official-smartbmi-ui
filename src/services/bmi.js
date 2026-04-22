@@ -1,4 +1,13 @@
-const cdcBmiAgeCsv = "";
+const BMI_FOR_AGE_CUTOFFS = {
+  1: [
+    { agemos: 120, p5: 14.2, p85: 19.6, p95: 22.2 },
+    { agemos: 180, p5: 16.5, p85: 23.3, p95: 26.8 },
+  ],
+  2: [
+    { agemos: 120, p5: 14.0, p85: 19.4, p95: 22.0 },
+    { agemos: 180, p5: 16.3, p85: 24.0, p95: 28.0 },
+  ],
+};
 
 function toNumber(value) {
   const num = Number(value);
@@ -35,7 +44,7 @@ function parseCdcBmiAgeTable(csvText) {
   return rowsBySex;
 }
 
-const CDC_BMI_AGE_TABLE = parseCdcBmiAgeTable(cdcBmiAgeCsv);
+const CDC_BMI_AGE_TABLE = BMI_FOR_AGE_CUTOFFS;
 
 function interpolateThresholdRow(rows, ageMonths) {
   if (!Array.isArray(rows) || rows.length === 0 || !Number.isFinite(ageMonths)) return null;

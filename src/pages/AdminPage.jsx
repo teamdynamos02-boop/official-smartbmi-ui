@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { Activity, Cpu, Gauge, MonitorSmartphone, Radio, RefreshCw, Server, Wifi } from "lucide-react";
+import { getLiveSensorSnapshot } from "../services/sensors";
 import { getDefaultSystemDeviceId, subscribeToCurrentSystemMonitor, subscribeToSystemMonitorHistory } from "../services/systemMonitor";
 import {
+  applyHeightReferenceCalibration,
   applyWeightReferenceCalibration,
+  getHeightCalibrationStatus,
   getWeightCalibrationStatus,
+  setHeightCalibrationOffset,
+  setHeightSensorToPlatform,
   setWeightCalibrationOffset,
   tareWeightCalibration,
 } from "../services/weightCalibration";
@@ -39,8 +44,13 @@ export default function AdminPage() {
   const [current, setCurrent] = useState(null);
   const [history, setHistory] = useState([]);
   const [weightCalibration, setWeightCalibration] = useState(null);
+  const [heightCalibration, setHeightCalibration] = useState(null);
+  const [sensorSnapshot, setSensorSnapshot] = useState(null);
   const [knownWeightKg, setKnownWeightKg] = useState("20");
   const [manualOffsetKg, setManualOffsetKg] = useState("");
+  const [knownHeightCm, setKnownHeightCm] = useState("170");
+  const [manualHeightOffsetCm, setManualHeightOffsetCm] = useState("");
+  const [sensorToPlatformCm, setSensorToPlatformCm] = useState("");
   const [calibrationBusy, setCalibrationBusy] = useState(false);
   const [calibrationMessage, setCalibrationMessage] = useState("");
   const [calibrationError, setCalibrationError] = useState("");
@@ -68,10 +78,16 @@ export default function AdminPage() {
 
     const refresh = async () => {
       try {
-        const snapshot = await getWeightCalibrationStatus();
+        const [weightSnapshot, heightSnapshot] = await Promise.all([
+          getWeightCalibrationStatus(),
+          getHeightCalibrationStatus(),
+        ]);
         if (!cancelled) {
-          setWeightCalibration(snapshot);
-          setManualOffsetKg((currentValue) => (currentValue === "" ? String(snapshot?.offsetKg ?? 0) : currentValue));
+          setWeightCalibration(weightSnapshot);
+          setHeightCalibration(heightSnapshot);
+          setManualOffsetKg((currentValue) => (currentValue === "" ? String(weightSnapshot?.offsetKg ?? 0) : currentValue));
+          setManualHeightOffsetCm((currentValue) => (currentValue === "" ? String(heightSnapshot?.offsetCm ?? 0) : currentValue));
+          setSensorToPlatformCm((currentValue) => (currentValue === "" ? String(heightSnapshot?.sensorToPlatformCm ?? 0) : currentValue));
         }
       } catch (error) {
         if (!cancelled) {
@@ -82,6 +98,30 @@ export default function AdminPage() {
 
     refresh();
     const intervalId = setInterval(refresh, 1500);
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const refreshSensors = async () => {
+      try {
+        const snapshot = await getLiveSensorSnapshot();
+        if (!cancelled) {
+          setSensorSnapshot(snapshot);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setCalibrationError((currentValue) => currentValue || error.message);
+        }
+      }
+    };
+
+    refreshSensors();
+    const intervalId = setInterval(refreshSensors, 500);
     return () => {
       cancelled = true;
       clearInterval(intervalId);
@@ -203,9 +243,15 @@ export default function AdminPage() {
     try {
       const result = await action();
       setCalibrationMessage(result?.message || "Calibration updated.");
-      const snapshot = await getWeightCalibrationStatus();
-      setWeightCalibration(snapshot);
-      setManualOffsetKg(String(snapshot?.offsetKg ?? 0));
+      const [weightSnapshot, heightSnapshot] = await Promise.all([
+        getWeightCalibrationStatus(),
+        getHeightCalibrationStatus(),
+      ]);
+      setWeightCalibration(weightSnapshot);
+      setHeightCalibration(heightSnapshot);
+      setManualOffsetKg(String(weightSnapshot?.offsetKg ?? 0));
+      setManualHeightOffsetCm(String(heightSnapshot?.offsetCm ?? 0));
+      setSensorToPlatformCm(String(heightSnapshot?.sensorToPlatformCm ?? 0));
     } catch (error) {
       setCalibrationError(error.message);
     } finally {
@@ -256,6 +302,13 @@ export default function AdminPage() {
 
   const components = current?.components ?? {};
   const measurement = current?.measurements ?? {};
+  const liveWeight = sensorSnapshot?.weight?.liveWeightKg ?? sensorSnapshot?.live?.weightKg ?? null;
+  const lockedWeight = sensorSnapshot?.weight?.finalWeightKg ?? sensorSnapshot?.weight?.weightKg ?? null;
+  const liveHeight = sensorSnapshot?.height?.liveHeightCm ?? sensorSnapshot?.live?.heightCm ?? null;
+  const lockedHeight = sensorSnapshot?.height?.finalHeightCm ?? sensorSnapshot?.height?.heightCm ?? null;
+  const measurementLocked = sensorSnapshot?.weight?.measurementLocked ?? sensorSnapshot?.height?.measurementLocked ?? false;
+  const liveBmi = sensorSnapshot?.live?.bmi ?? null;
+  const liveCategory = sensorSnapshot?.live?.category ?? "--";
   const componentKeys = Object.keys(COMPONENT_META);
 
   return (
@@ -333,6 +386,55 @@ export default function AdminPage() {
               <span>Category</span>
               <strong>{measurement.category || "--"}</strong>
             </div>
+          </div>
+
+          <h3 className="admin-history-title">Live Sensor Data</h3>
+          <div className="admin-calibration-card">
+            <div className="admin-measure-grid">
+              <div className="admin-measure-item">
+                <span>Live Weight</span>
+                <strong>{liveWeight != null ? `${Number(liveWeight).toFixed(1)} kg` : "--"}</strong>
+              </div>
+              <div className="admin-measure-item">
+                <span>Locked Weight</span>
+                <strong>{lockedWeight != null ? `${Number(lockedWeight).toFixed(1)} kg` : "--"}</strong>
+              </div>
+              <div className="admin-measure-item">
+                <span>Live Height</span>
+                <strong>{liveHeight != null ? `${Math.round(Number(liveHeight))} cm` : "--"}</strong>
+              </div>
+              <div className="admin-measure-item">
+                <span>Locked Height</span>
+                <strong>{lockedHeight != null ? `${Math.round(Number(lockedHeight))} cm` : "--"}</strong>
+              </div>
+              <div className="admin-measure-item">
+                <span>Live BMI</span>
+                <strong>{liveBmi != null ? liveBmi : "--"}</strong>
+              </div>
+              <div className="admin-measure-item">
+                <span>Live Category</span>
+                <strong>{liveCategory || "--"}</strong>
+              </div>
+              <div className="admin-measure-item">
+                <span>Weight Phase</span>
+                <strong>{formatStatusLabel(sensorSnapshot?.weight?.phase || "idle")}</strong>
+              </div>
+              <div className="admin-measure-item">
+                <span>Height Phase</span>
+                <strong>{formatStatusLabel(sensorSnapshot?.height?.phase || "idle")}</strong>
+              </div>
+              <div className="admin-measure-item">
+                <span>Measurement Locked</span>
+                <strong>{measurementLocked ? "Yes" : "No"}</strong>
+              </div>
+              <div className="admin-measure-item">
+                <span>Serial Port</span>
+                <strong>{sensorSnapshot?.weight?.serialPort || sensorSnapshot?.height?.serialPort || "--"}</strong>
+              </div>
+            </div>
+            <p className="admin-empty">
+              {sensorSnapshot?.weight?.statusMessage || sensorSnapshot?.height?.statusMessage || "Waiting for live sensor data."}
+            </p>
           </div>
 
           <h3 className="admin-history-title">Weight Calibration</h3>
@@ -419,6 +521,104 @@ export default function AdminPage() {
 
             {calibrationMessage ? <p className="message-ok">{calibrationMessage}</p> : null}
             {calibrationError ? <p className="message-warning">{calibrationError}</p> : null}
+          </div>
+
+          <h3 className="admin-history-title">ToF Calibration</h3>
+          <div className="admin-calibration-card">
+            <div className="admin-calibration-grid">
+              <div className="admin-measure-item">
+                <span>Raw Distance</span>
+                <strong>{heightCalibration?.rawDistanceCm != null ? `${heightCalibration.rawDistanceCm} cm` : "--"}</strong>
+              </div>
+              <div className="admin-measure-item">
+                <span>Live Height</span>
+                <strong>{heightCalibration?.liveHeightCm != null ? `${heightCalibration.liveHeightCm} cm` : "--"}</strong>
+              </div>
+              <div className="admin-measure-item">
+                <span>Platform Distance</span>
+                <strong>{heightCalibration?.sensorToPlatformCm != null ? `${heightCalibration.sensorToPlatformCm} cm` : "--"}</strong>
+              </div>
+              <div className="admin-measure-item">
+                <span>Offset</span>
+                <strong>{heightCalibration?.offsetCm != null ? `${heightCalibration.offsetCm} cm` : "--"}</strong>
+              </div>
+            </div>
+
+            <p className="admin-empty">
+              1. Measure the sensor-to-platform distance. 2. Stand a person with known height under the ToF sensor. 3. Apply reference.
+            </p>
+
+            <label className="admin-calibration-field">
+              <span>Sensor to Platform (cm)</span>
+              <input
+                type="number"
+                min="1"
+                step="0.1"
+                value={sensorToPlatformCm}
+                onChange={(event) => setSensorToPlatformCm(event.target.value)}
+                disabled={calibrationBusy}
+              />
+            </label>
+
+            <div className="admin-calibration-actions">
+              <button
+                className="btn"
+                onClick={() => runCalibrationAction(() => setHeightSensorToPlatform(Number(sensorToPlatformCm)))}
+                disabled={calibrationBusy}
+              >
+                Save Platform Distance
+              </button>
+            </div>
+
+            <label className="admin-calibration-field">
+              <span>Known Height (cm)</span>
+              <input
+                type="number"
+                min="1"
+                step="0.1"
+                value={knownHeightCm}
+                onChange={(event) => setKnownHeightCm(event.target.value)}
+                disabled={calibrationBusy}
+              />
+            </label>
+
+            <div className="admin-calibration-actions">
+              <button
+                className="btn btn-primary"
+                onClick={() => runCalibrationAction(() => applyHeightReferenceCalibration(Number(knownHeightCm)))}
+                disabled={calibrationBusy}
+              >
+                Apply Height Reference
+              </button>
+            </div>
+
+            <label className="admin-calibration-field">
+              <span>Manual Offset (cm)</span>
+              <input
+                type="number"
+                step="0.0001"
+                value={manualHeightOffsetCm}
+                onChange={(event) => setManualHeightOffsetCm(event.target.value)}
+                disabled={calibrationBusy}
+              />
+            </label>
+
+            <div className="admin-calibration-actions">
+              <button
+                className="btn"
+                onClick={() => runCalibrationAction(() => setHeightCalibrationOffset(Number(manualHeightOffsetCm)))}
+                disabled={calibrationBusy}
+              >
+                Save Manual Offset
+              </button>
+              <button
+                className="btn"
+                onClick={() => runCalibrationAction(() => getHeightCalibrationStatus())}
+                disabled={calibrationBusy}
+              >
+                Refresh
+              </button>
+            </div>
           </div>
 
           <h3 className="admin-history-title">Offline Sync</h3>

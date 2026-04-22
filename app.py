@@ -120,25 +120,35 @@ SENSOR_TO_PLATFORM_CM = float(
 HEIGHT_CALIBRATION_OFFSET_CM = float(os.getenv("HEIGHT_CALIBRATION_OFFSET_CM", "0"))
 MIN_HEIGHT_CM = float(os.getenv("MIN_HEIGHT_CM", "50"))
 MAX_HEIGHT_CM = float(os.getenv("MAX_HEIGHT_CM", "250"))
-HEIGHT_FILTER_WINDOW = int(os.getenv("HEIGHT_FILTER_WINDOW", "7"))
-HEIGHT_STABLE_MIN_SAMPLES = int(os.getenv("HEIGHT_STABLE_MIN_SAMPLES", "5"))
-HEIGHT_STABLE_RANGE_CM = float(os.getenv("HEIGHT_STABLE_RANGE_CM", "1.0"))
-HEIGHT_HOLD_RANGE_CM = float(os.getenv("HEIGHT_HOLD_RANGE_CM", "0.8"))
+HEIGHT_FILTER_WINDOW = int(os.getenv("HEIGHT_FILTER_WINDOW", "5"))
+HEIGHT_STABLE_MIN_SAMPLES = int(os.getenv("HEIGHT_STABLE_MIN_SAMPLES", "4"))
+HEIGHT_STABLE_RANGE_CM = float(os.getenv("HEIGHT_STABLE_RANGE_CM", "1.5"))
+HEIGHT_HOLD_RANGE_CM = float(os.getenv("HEIGHT_HOLD_RANGE_CM", "1.5"))
 HEIGHT_UPDATE_INTERVAL_MS = int(os.getenv("HEIGHT_UPDATE_INTERVAL_MS", "1000"))
-WEIGHT_FILTER_WINDOW = int(os.getenv("WEIGHT_FILTER_WINDOW", "11"))
-WEIGHT_STABLE_MIN_SAMPLES = int(os.getenv("WEIGHT_STABLE_MIN_SAMPLES", "7"))
-WEIGHT_STABLE_RANGE_KG = float(os.getenv("WEIGHT_STABLE_RANGE_KG", "0.15"))
+HEIGHT_MIN_VISIBLE_LOCK_MS = int(os.getenv("HEIGHT_MIN_VISIBLE_LOCK_MS", "120"))
+HEIGHT_LOCK_LIVE_MATCH_TOLERANCE_CM = float(os.getenv("HEIGHT_LOCK_LIVE_MATCH_TOLERANCE_CM", "4.0"))
+HEIGHT_TRUSTED_PEAK_OVERRIDE_CM = float(os.getenv("HEIGHT_TRUSTED_PEAK_OVERRIDE_CM", "0.0"))
+HEIGHT_CANDIDATE_PEAK_TOLERANCE_CM = float(os.getenv("HEIGHT_CANDIDATE_PEAK_TOLERANCE_CM", "999.0"))
+HEIGHT_LOCK_MIN_PEAK_MARGIN_CM = float(os.getenv("HEIGHT_LOCK_MIN_PEAK_MARGIN_CM", "999.0"))
+HEIGHT_STANDING_MIN_CM = float(os.getenv("HEIGHT_STANDING_MIN_CM", "145.0"))
+HEIGHT_PEAK_REBASE_DELTA_CM = float(os.getenv("HEIGHT_PEAK_REBASE_DELTA_CM", "10.0"))
+HEIGHT_DROP_REJECT_CM = float(os.getenv("HEIGHT_DROP_REJECT_CM", "12.0"))
+WEIGHT_FILTER_WINDOW = int(os.getenv("WEIGHT_FILTER_WINDOW", "7"))
+WEIGHT_STABLE_MIN_SAMPLES = int(os.getenv("WEIGHT_STABLE_MIN_SAMPLES", "4"))
+WEIGHT_STABLE_RANGE_KG = float(os.getenv("WEIGHT_STABLE_RANGE_KG", "0.25"))
 WEIGHT_UPDATE_INTERVAL_MS = int(os.getenv("WEIGHT_UPDATE_INTERVAL_MS", "250"))
-WEIGHT_STABLE_HOLD_MS = int(os.getenv("WEIGHT_STABLE_HOLD_MS", "1200"))
-WEIGHT_EMPTY_THRESHOLD_KG = float(os.getenv("WEIGHT_EMPTY_THRESHOLD_KG", "3.0"))
+WEIGHT_STABLE_HOLD_MS = int(os.getenv("WEIGHT_STABLE_HOLD_MS", "700"))
+WEIGHT_EMPTY_THRESHOLD_KG = float(os.getenv("WEIGHT_EMPTY_THRESHOLD_KG", "8.0"))
+WEIGHT_SPIKE_REJECT_KG = float(os.getenv("WEIGHT_SPIKE_REJECT_KG", "1.8"))
 WEIGHT_CALIBRATION_OFFSET_KG = float(os.getenv("WEIGHT_CALIBRATION_OFFSET_KG", "0"))
 WEIGHT_CALIBRATION_FILE = os.getenv("WEIGHT_CALIBRATION_FILE", "weight_calibration.json")
-WEIGHT_ENTRY_SETTLE_MS = int(os.getenv("WEIGHT_ENTRY_SETTLE_MS", "1800"))
-HEIGHT_STABLE_HOLD_MS = int(os.getenv("HEIGHT_STABLE_HOLD_MS", "850"))
-WEIGHT_FORCE_LOCK_MS = int(os.getenv("WEIGHT_FORCE_LOCK_MS", "6000"))
-HEIGHT_FORCE_LOCK_MS = int(os.getenv("HEIGHT_FORCE_LOCK_MS", "3600"))
-WEIGHT_FORCE_LOCK_MAX_RANGE_KG = float(os.getenv("WEIGHT_FORCE_LOCK_MAX_RANGE_KG", "0.28"))
-HEIGHT_FORCE_LOCK_MAX_RANGE_CM = float(os.getenv("HEIGHT_FORCE_LOCK_MAX_RANGE_CM", "0.9"))
+HEIGHT_CALIBRATION_FILE = os.getenv("HEIGHT_CALIBRATION_FILE", "height_calibration.json")
+WEIGHT_ENTRY_SETTLE_MS = int(os.getenv("WEIGHT_ENTRY_SETTLE_MS", "1200"))
+HEIGHT_STABLE_HOLD_MS = int(os.getenv("HEIGHT_STABLE_HOLD_MS", "700"))
+WEIGHT_FORCE_LOCK_MS = int(os.getenv("WEIGHT_FORCE_LOCK_MS", "3500"))
+HEIGHT_FORCE_LOCK_MS = int(os.getenv("HEIGHT_FORCE_LOCK_MS", "2800"))
+WEIGHT_FORCE_LOCK_MAX_RANGE_KG = float(os.getenv("WEIGHT_FORCE_LOCK_MAX_RANGE_KG", "0.30"))
+HEIGHT_FORCE_LOCK_MAX_RANGE_CM = float(os.getenv("HEIGHT_FORCE_LOCK_MAX_RANGE_CM", "1.8"))
 
 # FACE RECOGNITION CUSTOMIZATION HERE
 # Most face-matching, liveness, and calibration thresholds are controlled below.
@@ -226,6 +236,9 @@ height_filter_state = {
     "bestCandidateDistanceCm": None,
     "bestCandidateRangeCm": None,
     "peakLiveHeightCm": None,
+    "trustedPeakHeightCm": None,
+    "trustedPeakSeenAt": None,
+    "firstValidLiveAt": None,
     "fallbackCandidateHeightCm": None,
     "fallbackCandidateDistanceCm": None,
     "fallbackCandidateRangeCm": None,
@@ -250,6 +263,12 @@ liveness_input_name = None
 calibration_lock = threading.Lock()
 weight_calibration_state = {
     "offsetKg": WEIGHT_CALIBRATION_OFFSET_KG,
+    "updatedAt": None,
+    "source": "env",
+}
+height_calibration_state = {
+    "sensorToPlatformCm": SENSOR_TO_PLATFORM_CM,
+    "offsetCm": HEIGHT_CALIBRATION_OFFSET_CM,
     "updatedAt": None,
     "source": "env",
 }
@@ -397,15 +416,18 @@ def _persist_weight_calibration_state_locked():
 
 
 def _get_weight_calibration_offset_kg():
-    return 0.0
+    return float(weight_calibration_state.get("offsetKg") or 0.0)
 
 
 def _apply_weight_calibration(raw_weight_kg):
-    return max(0.0, float(raw_weight_kg))
+    raw_weight = max(0.0, float(raw_weight_kg))
+    if raw_weight < WEIGHT_EMPTY_THRESHOLD_KG:
+        return raw_weight
+    return max(0.0, raw_weight + _get_weight_calibration_offset_kg())
 
 
 def _estimate_raw_weight_kg(calibrated_weight_kg):
-    return float(calibrated_weight_kg)
+    return float(calibrated_weight_kg) - _get_weight_calibration_offset_kg()
 
 
 def _set_weight_calibration_offset_locked(offset_kg, *, source="runtime"):
@@ -413,6 +435,81 @@ def _set_weight_calibration_offset_locked(offset_kg, *, source="runtime"):
     weight_calibration_state["updatedAt"] = now_ms()
     weight_calibration_state["source"] = source
     _persist_weight_calibration_state_locked()
+
+
+def _load_height_calibration_state():
+    if not HEIGHT_CALIBRATION_FILE:
+        return
+    try:
+        if not os.path.exists(HEIGHT_CALIBRATION_FILE):
+            return
+        with open(HEIGHT_CALIBRATION_FILE, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+
+        platform_value = payload.get("sensorToPlatformCm")
+        offset_value = payload.get("offsetCm")
+        if isinstance(platform_value, str):
+            platform_value = float(platform_value)
+        if isinstance(offset_value, str):
+            offset_value = float(offset_value)
+
+        if isinstance(platform_value, (int, float)) and math.isfinite(float(platform_value)) and float(platform_value) > 0:
+            height_calibration_state["sensorToPlatformCm"] = float(platform_value)
+        if isinstance(offset_value, (int, float)) and math.isfinite(float(offset_value)):
+            height_calibration_state["offsetCm"] = float(offset_value)
+        height_calibration_state["updatedAt"] = int(payload.get("updatedAt") or now_ms())
+        height_calibration_state["source"] = payload.get("source") or "file"
+    except Exception as e:
+        print(f"Failed to load height calibration file {HEIGHT_CALIBRATION_FILE}: {e}")
+
+
+def _persist_height_calibration_state_locked():
+    if not HEIGHT_CALIBRATION_FILE:
+        return
+    payload = {
+        "sensorToPlatformCm": round(float(height_calibration_state["sensorToPlatformCm"]), 4),
+        "offsetCm": round(float(height_calibration_state["offsetCm"]), 4),
+        "updatedAt": int(height_calibration_state["updatedAt"] or now_ms()),
+        "source": height_calibration_state.get("source") or "runtime",
+    }
+    folder = os.path.dirname(os.path.abspath(HEIGHT_CALIBRATION_FILE))
+    if folder:
+        os.makedirs(folder, exist_ok=True)
+    with open(HEIGHT_CALIBRATION_FILE, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2)
+        f.write("\n")
+
+
+def _get_height_sensor_to_platform_cm():
+    return float(height_calibration_state.get("sensorToPlatformCm") or SENSOR_TO_PLATFORM_CM)
+
+
+def _get_height_calibration_offset_cm():
+    return float(height_calibration_state.get("offsetCm") or 0.0)
+
+
+def _apply_height_calibration(distance_cm):
+    return _get_height_sensor_to_platform_cm() - float(distance_cm) + _get_height_calibration_offset_cm()
+
+
+def _set_height_calibration_locked(*, sensor_to_platform_cm=None, offset_cm=None, source="runtime"):
+    if sensor_to_platform_cm is not None:
+        height_calibration_state["sensorToPlatformCm"] = float(sensor_to_platform_cm)
+    if offset_cm is not None:
+        height_calibration_state["offsetCm"] = float(offset_cm)
+    height_calibration_state["updatedAt"] = now_ms()
+    height_calibration_state["source"] = source
+    _persist_height_calibration_state_locked()
+
+
+def _latest_live_distance_cm_locked():
+    live_distance = sensor_data.get("rawDistanceCm")
+    if live_distance is None:
+        return None
+    live_ts = serial_state.get("lastLiveHeightAt")
+    if not _is_recent(live_ts, max(2500, SYSTEM_COMPONENT_FRESH_MS)):
+        return None
+    return float(live_distance)
 
 
 def _latest_live_raw_weight_kg_locked():
@@ -435,15 +532,13 @@ RESTRICTION_ALIASES = {
 
 
 def get_bmi_category(bmi):
-    if bmi <= 18.5:
+    if bmi < 18.5:
         return "Underweight"
-    elif bmi <= 22.9:
+    if bmi < 25.0:
         return "Normal"
-    elif bmi <= 24.9:
+    if bmi < 30.0:
         return "Overweight"
-    elif bmi <= 29.9:
-        return "Obese I"
-    return "Obese II"
+    return "Obese"
 
 
 def recompute_bmi_locked():
@@ -456,7 +551,7 @@ def recompute_bmi_locked():
 
     h_m = h / 100.0
     bmi = w / (h_m ** 2)
-    sensor_data["bmi"] = round(bmi, 2)
+    sensor_data["bmi"] = round(bmi, 1)
     sensor_data["category"] = get_bmi_category(bmi)
 
 
@@ -468,7 +563,7 @@ def _build_live_measurement_snapshot_locked():
 
     if weight_kg is not None and height_cm is not None and height_cm > 0:
         height_m = height_cm / 100.0
-        bmi = round(float(weight_kg) / (height_m ** 2), 2)
+        bmi = round(float(weight_kg) / (height_m ** 2), 1)
         category = get_bmi_category(bmi)
 
     return {
@@ -480,24 +575,50 @@ def _build_live_measurement_snapshot_locked():
 
 
 def _build_system_measurement_snapshot_locked():
-    weight_kg = sensor_data.get("weightKg")
-    height_cm = sensor_data.get("heightCm")
-    if weight_kg is None:
-        weight_kg = sensor_data.get("liveWeightKg")
+    final_weight_kg = sensor_data.get("weightKg")
+    final_height_cm = sensor_data.get("heightCm")
+    live_weight_kg = sensor_data.get("liveWeightKg")
+    live_height_cm = sensor_data.get("liveHeightCm")
+    raw_weight_kg = None
+    if live_weight_kg is not None:
+        raw_weight_kg = round(_estimate_raw_weight_kg(live_weight_kg), 3)
+    weight_kg = final_weight_kg if final_weight_kg is not None else live_weight_kg
+    height_cm = final_height_cm
+    display_weight_kg = final_weight_kg if final_weight_kg is not None else live_weight_kg
+    display_height_cm = final_height_cm if final_height_cm is not None else live_height_cm
 
     bmi = sensor_data.get("bmi")
     category = sensor_data.get("category")
 
     if (bmi is None or not category or category == "--") and weight_kg is not None and height_cm is not None and height_cm > 0:
         height_m = height_cm / 100.0
-        bmi = round(float(weight_kg) / (height_m ** 2), 2)
+        bmi = round(float(weight_kg) / (height_m ** 2), 1)
         category = get_bmi_category(bmi)
 
     return {
         "weightKg": weight_kg,
         "heightCm": height_cm,
+        "displayWeightKg": display_weight_kg,
+        "displayHeightCm": display_height_cm,
+        "liveWeightKg": live_weight_kg,
+        "liveHeightCm": live_height_cm,
+        "rawWeightKg": raw_weight_kg,
+        "finalWeightKg": final_weight_kg,
+        "finalHeightCm": final_height_cm,
         "bmi": bmi,
         "category": category or "--",
+        "rawDistanceCm": sensor_data.get("rawDistanceCm"),
+        "weightPhase": sensor_data.get("weightPhase", "idle"),
+        "heightPhase": sensor_data.get("heightPhase", "idle"),
+        "weightStable": bool(sensor_data.get("weightStable")),
+        "heightStable": bool(sensor_data.get("heightStable")),
+        "weightReadyForLock": bool(live_weight_kg is not None and float(live_weight_kg) >= WEIGHT_EMPTY_THRESHOLD_KG),
+        "measurementLocked": bool(sensor_data.get("measurementLocked", False)),
+        "statusMessage": sensor_data.get("statusMessage") or "",
+        "serialConnected": bool(serial_state.get("connected")),
+        "serialReceivingData": _is_recent(serial_state.get("lastLineAt")),
+        "liveWeightFresh": _is_recent(serial_state.get("lastLiveWeightAt"), max(2500, SYSTEM_COMPONENT_FRESH_MS)),
+        "liveHeightFresh": _is_recent(serial_state.get("lastLiveHeightAt"), max(2500, SYSTEM_COMPONENT_FRESH_MS)),
     }
 
 
@@ -556,16 +677,12 @@ def _reset_weight_measurement_locked(message="Step on the scale", clear_final=Fa
     weight_filter_state["fallbackCandidateRangeKg"] = None
     weight_filter_state["stableSince"] = None
     weight_filter_state["measurementStartedAt"] = None
-    current_weight = sensor_data.get("liveWeightKg")
-    if current_weight is not None:
-        sensor_data["weightKg"] = current_weight
-        sensor_data["finalWeightKg"] = current_weight
-    elif clear_final:
-        sensor_data["weightKg"] = 0.0
-        sensor_data["finalWeightKg"] = 0.0
-        sensor_data["liveWeightKg"] = 0.0
-    sensor_data["weightStable"] = sensor_data.get("weightKg") is not None
-    sensor_data["weightPhase"] = "active"
+    if clear_final:
+        sensor_data["liveWeightKg"] = None
+    sensor_data["weightKg"] = None
+    sensor_data["finalWeightKg"] = None
+    sensor_data["weightStable"] = False
+    sensor_data["weightPhase"] = "idle"
     recompute_bmi_locked()
     _sync_measurement_flags_locked(message)
 
@@ -582,12 +699,10 @@ def _start_weight_measurement_locked(now_ts, live_weight=None):
     current_weight = sensor_data.get("liveWeightKg")
     if live_weight is not None:
         current_weight = round(_apply_weight_calibration(float(live_weight)), 1)
-    elif current_weight is None:
-        current_weight = 0.0
     sensor_data["liveWeightKg"] = current_weight
-    sensor_data["weightKg"] = current_weight
-    sensor_data["finalWeightKg"] = current_weight
-    sensor_data["weightStable"] = True
+    sensor_data["weightKg"] = None
+    sensor_data["finalWeightKg"] = None
+    sensor_data["weightStable"] = False
     sensor_data["measurementLocked"] = False
     sensor_data["weightPhase"] = "active"
     sensor_data["statusMessage"] = "Reading live load cell"
@@ -600,6 +715,9 @@ def _reset_height_measurement_locked(message="Stand under sensor"):
     height_filter_state["bestCandidateDistanceCm"] = None
     height_filter_state["bestCandidateRangeCm"] = None
     height_filter_state["peakLiveHeightCm"] = None
+    height_filter_state["trustedPeakHeightCm"] = None
+    height_filter_state["trustedPeakSeenAt"] = None
+    height_filter_state["firstValidLiveAt"] = None
     height_filter_state["fallbackCandidateHeightCm"] = None
     height_filter_state["fallbackCandidateDistanceCm"] = None
     height_filter_state["fallbackCandidateRangeCm"] = None
@@ -1830,26 +1948,130 @@ def handle_line(line: str):
                 weight = 0.0
             with data_lock:
                 calibrated_weight = round(_apply_weight_calibration(weight), 1)
-                weight_samples.append(weight)
-                weight_filter_state["measurementStartedAt"] = line_ts
-                weight_filter_state["lastPublishedAt"] = line_ts
-                weight_filter_state["bestCandidateWeightKg"] = calibrated_weight
-                weight_filter_state["fallbackCandidateWeightKg"] = calibrated_weight
-                weight_filter_state["bestCandidateRangeKg"] = 0.0
-                weight_filter_state["fallbackCandidateRangeKg"] = 0.0
-                weight_filter_state["stableSince"] = line_ts
+                if weight_filter_state["measurementStartedAt"] is None:
+                    weight_filter_state["measurementStartedAt"] = line_ts
+                prior_live_weight = sensor_data.get("liveWeightKg")
+                if (
+                    prior_live_weight is not None
+                    and calibrated_weight >= WEIGHT_EMPTY_THRESHOLD_KG
+                    and abs(calibrated_weight - float(prior_live_weight)) > WEIGHT_SPIKE_REJECT_KG
+                ):
+                    sensor_data["weightPhase"] = "active"
+                    sensor_data["statusMessage"] = "Hold still on the scale"
+                    serial_state["lastLiveWeightAt"] = line_ts
+                    _sync_measurement_flags_locked("Hold still on the scale")
+                    return
+
+                weight_samples.append(calibrated_weight)
                 sensor_data["liveWeightKg"] = calibrated_weight
-                sensor_data["weightKg"] = calibrated_weight
-                sensor_data["finalWeightKg"] = calibrated_weight
-                sensor_data["weightStable"] = True
                 sensor_data["weightPhase"] = "active"
                 sensor_data["statusMessage"] = "Reading live load cell"
                 serial_state["lastLiveWeightAt"] = line_ts
-                serial_state["lastWeightAt"] = line_ts
-                recompute_bmi_locked()
-                _sync_measurement_flags_locked("Reading live load cell")
-        except Exception:
-            pass
+
+                if calibrated_weight < WEIGHT_EMPTY_THRESHOLD_KG:
+                    weight_filter_state["stableSince"] = None
+                    sensor_data["weightKg"] = None
+                    sensor_data["finalWeightKg"] = None
+                    sensor_data["weightStable"] = False
+                    sensor_data["weightPhase"] = "idle"
+                    sensor_data["statusMessage"] = "Step on the scale"
+                    recompute_bmi_locked()
+                    _sync_measurement_flags_locked("Step on the scale")
+                    return
+
+                if len(weight_samples) >= max(1, WEIGHT_STABLE_MIN_SAMPLES):
+                    recent_weights = list(weight_samples)
+                    stable_range = _buffer_range(recent_weights)
+                    filtered_weight_kg = _trimmed_median(recent_weights)
+
+                    if filtered_weight_kg is not None and stable_range is not None:
+                        candidate_weight_kg = round(float(filtered_weight_kg), 1)
+                        fallback_range = weight_filter_state["fallbackCandidateRangeKg"]
+                        if fallback_range is None or stable_range < fallback_range:
+                            weight_filter_state["fallbackCandidateWeightKg"] = candidate_weight_kg
+                            weight_filter_state["fallbackCandidateRangeKg"] = stable_range
+
+                        if stable_range <= WEIGHT_STABLE_RANGE_KG:
+                            best_weight = weight_filter_state["bestCandidateWeightKg"]
+                            best_range = weight_filter_state["bestCandidateRangeKg"]
+                            if (
+                                best_weight is None
+                                or best_range is None
+                                or stable_range < best_range
+                                or stable_range == best_range
+                            ):
+                                weight_filter_state["bestCandidateWeightKg"] = candidate_weight_kg
+                                weight_filter_state["bestCandidateRangeKg"] = stable_range
+                            if weight_filter_state["stableSince"] is None:
+                                weight_filter_state["stableSince"] = line_ts
+                            sensor_data["weightPhase"] = "stabilizing"
+                            sensor_data["statusMessage"] = "Hold still on the scale"
+                            held_ms = line_ts - int(weight_filter_state["stableSince"])
+                            time_since_start_ms = line_ts - int(weight_filter_state["measurementStartedAt"]) if weight_filter_state["measurementStartedAt"] is not None else 0
+                            if (
+                                held_ms >= max(250, WEIGHT_STABLE_HOLD_MS)
+                                and time_since_start_ms >= max(500, WEIGHT_ENTRY_SETTLE_MS)
+                            ):
+                                locked_weight_kg = round(
+                                    float(
+                                        weight_filter_state["bestCandidateWeightKg"]
+                                        if weight_filter_state["bestCandidateWeightKg"] is not None
+                                        else candidate_weight_kg
+                                    ),
+                                    1,
+                                )
+                                sensor_data["weightKg"] = locked_weight_kg
+                                sensor_data["finalWeightKg"] = locked_weight_kg
+                                sensor_data["weightStable"] = True
+                                sensor_data["weightPhase"] = "locked"
+                                sensor_data["statusMessage"] = "Final measurement locked"
+                                serial_state["lastWeightAt"] = line_ts
+                                weight_filter_state["lastPublishedAt"] = line_ts
+                                recompute_bmi_locked()
+                                _sync_measurement_flags_locked("Final measurement locked")
+                            else:
+                                recompute_bmi_locked()
+                                _sync_measurement_flags_locked("Hold still on the scale")
+                        else:
+                            weight_filter_state["stableSince"] = None
+                            sensor_data["weightStable"] = False
+                            sensor_data["weightPhase"] = "active"
+                            sensor_data["statusMessage"] = "Hold still on the scale"
+                            recompute_bmi_locked()
+                            _sync_measurement_flags_locked("Hold still on the scale")
+
+                started_at = weight_filter_state["measurementStartedAt"]
+                if (
+                    not sensor_data["weightStable"]
+                    and started_at is not None
+                    and (line_ts - int(started_at)) >= max(1200, WEIGHT_FORCE_LOCK_MS, WEIGHT_ENTRY_SETTLE_MS)
+                    and (
+                        weight_filter_state["bestCandidateWeightKg"] is not None
+                        or weight_filter_state["fallbackCandidateWeightKg"] is not None
+                    )
+                ):
+                    candidate_weight_kg = (
+                        weight_filter_state["bestCandidateWeightKg"]
+                        if weight_filter_state["bestCandidateWeightKg"] is not None
+                        else weight_filter_state["fallbackCandidateWeightKg"]
+                    )
+                    candidate_range = (
+                        weight_filter_state["bestCandidateRangeKg"]
+                        if weight_filter_state["bestCandidateWeightKg"] is not None
+                        else weight_filter_state["fallbackCandidateRangeKg"]
+                    )
+                    if candidate_range is not None and candidate_range <= WEIGHT_FORCE_LOCK_MAX_RANGE_KG:
+                        locked_weight_kg = round(float(candidate_weight_kg), 1)
+                        sensor_data["weightKg"] = locked_weight_kg
+                        sensor_data["finalWeightKg"] = locked_weight_kg
+                        sensor_data["weightStable"] = True
+                        sensor_data["weightPhase"] = "locked"
+                        sensor_data["statusMessage"] = "Final measurement locked"
+                        serial_state["lastWeightAt"] = line_ts
+                        recompute_bmi_locked()
+                        _sync_measurement_flags_locked("Final measurement locked")
+        except Exception as e:
+            print(f"Weight measurement processing error: {e} | line={line!r}")
         return
 
     # TOF SENSOR CUSTOMIZATION HERE
@@ -1869,30 +2091,74 @@ def handle_line(line: str):
                 sensor_data["rawDistanceCm"] = round(dist_cm, 1)
                 live_distance_cm = _trimmed_median(list(height_distance_samples))
                 if live_distance_cm is not None:
-                    live_height_cm = SENSOR_TO_PLATFORM_CM - live_distance_cm + HEIGHT_CALIBRATION_OFFSET_CM
+                    live_height_cm = _apply_height_calibration(live_distance_cm)
                     if MIN_HEIGHT_CM <= live_height_cm <= MAX_HEIGHT_CM:
                         rounded_live_height_cm = int(round(live_height_cm))
                         sensor_data["liveHeightCm"] = rounded_live_height_cm
+                        if height_filter_state["firstValidLiveAt"] is None:
+                            height_filter_state["firstValidLiveAt"] = line_ts
+                        if rounded_live_height_cm >= HEIGHT_STANDING_MIN_CM:
+                            trusted_peak_height_cm = height_filter_state["trustedPeakHeightCm"]
+                            if trusted_peak_height_cm is None or rounded_live_height_cm > int(trusted_peak_height_cm):
+                                height_filter_state["trustedPeakHeightCm"] = rounded_live_height_cm
+                                height_filter_state["trustedPeakSeenAt"] = line_ts
                         peak_live_height_cm = height_filter_state["peakLiveHeightCm"]
                         if peak_live_height_cm is None or rounded_live_height_cm > int(peak_live_height_cm):
                             height_filter_state["peakLiveHeightCm"] = rounded_live_height_cm
+                            best_height = height_filter_state["bestCandidateHeightCm"]
+                            if (
+                                best_height is not None
+                                and rounded_live_height_cm >= HEIGHT_STANDING_MIN_CM
+                                and int(best_height) < (rounded_live_height_cm - HEIGHT_PEAK_REBASE_DELTA_CM)
+                            ):
+                                # A significantly better standing-height peak appeared,
+                                # so discard the earlier lower candidate before it can lock in.
+                                height_filter_state["bestCandidateHeightCm"] = None
+                                height_filter_state["bestCandidateDistanceCm"] = None
+                                height_filter_state["bestCandidateRangeCm"] = None
+                                height_filter_state["stableSince"] = None
                         sensor_data["heightPhase"] = "person_detected" if len(height_distance_samples) < HEIGHT_STABLE_MIN_SAMPLES else "measuring"
                         sensor_data["statusMessage"] = "Stand centered under the sensor"
                         serial_state["lastLiveHeightAt"] = line_ts
+                    elif live_height_cm < MIN_HEIGHT_CM:
+                        _reset_height_measurement_locked("Stand under sensor")
+                        serial_state["lastHeightAt"] = None
+                        serial_state["lastLiveHeightAt"] = None
+                        return
                 if len(height_distance_samples) >= max(1, HEIGHT_STABLE_MIN_SAMPLES):
                     recent = list(height_distance_samples)
                     stable_range = _buffer_range(recent)
                     filtered_dist_cm = _trimmed_median(recent)
 
                     if filtered_dist_cm is not None and stable_range is not None:
-                        person_height = SENSOR_TO_PLATFORM_CM - filtered_dist_cm + HEIGHT_CALIBRATION_OFFSET_CM
+                        person_height = _apply_height_calibration(filtered_dist_cm)
 
                         if MIN_HEIGHT_CM <= person_height <= MAX_HEIGHT_CM:
                             candidate_height_cm = int(round(person_height))
                             peak_live_height_cm = height_filter_state["peakLiveHeightCm"]
+                            if candidate_height_cm < HEIGHT_STANDING_MIN_CM:
+                                height_filter_state["stableSince"] = None
+                                if not sensor_data["heightStable"]:
+                                    sensor_data["heightPhase"] = "measuring"
+                                    sensor_data["statusMessage"] = "Stand tall under the sensor"
+                                    _sync_measurement_flags_locked("Stand tall under the sensor")
+                                return
+                            minimum_lockable_height_cm = None
+                            if peak_live_height_cm is not None and int(peak_live_height_cm) >= HEIGHT_STANDING_MIN_CM:
+                                minimum_lockable_height_cm = max(
+                                    HEIGHT_STANDING_MIN_CM,
+                                    int(peak_live_height_cm) - HEIGHT_DROP_REJECT_CM,
+                                )
+                            if minimum_lockable_height_cm is not None and candidate_height_cm < minimum_lockable_height_cm:
+                                height_filter_state["stableSince"] = None
+                                if not sensor_data["heightStable"]:
+                                    sensor_data["heightPhase"] = "measuring"
+                                    sensor_data["statusMessage"] = "Hold still at full height"
+                                    _sync_measurement_flags_locked("Hold still at full height")
+                                return
                             candidate_near_peak = (
                                 peak_live_height_cm is None
-                                or candidate_height_cm >= (int(peak_live_height_cm) - 2)
+                                or candidate_height_cm >= (int(peak_live_height_cm) - HEIGHT_CANDIDATE_PEAK_TOLERANCE_CM)
                             )
                             fallback_range = height_filter_state["fallbackCandidateRangeCm"]
                             if fallback_range is None or stable_range < fallback_range:
@@ -1904,10 +2170,11 @@ def handle_line(line: str):
                                 best_range = height_filter_state["bestCandidateRangeCm"]
                                 if (
                                     best_height is None
-                                    or candidate_height_cm > int(best_height)
+                                    or best_range is None
+                                    or stable_range < best_range
                                     or (
-                                        candidate_height_cm == int(best_height)
-                                        and (best_range is None or stable_range < best_range)
+                                        stable_range == best_range
+                                        and candidate_height_cm < int(best_height)
                                     )
                                 ):
                                     height_filter_state["bestCandidateHeightCm"] = candidate_height_cm
@@ -1918,16 +2185,38 @@ def handle_line(line: str):
                                 sensor_data["heightPhase"] = "stabilizing"
                                 sensor_data["statusMessage"] = "Stay centered and hold still"
                                 held_ms = now_ts - int(height_filter_state["stableSince"])
-                                if held_ms >= max(250, HEIGHT_STABLE_HOLD_MS) and stable_range <= HEIGHT_HOLD_RANGE_CM:
-                                    locked_height_cm = int(
-                                        height_filter_state["bestCandidateHeightCm"]
-                                        if height_filter_state["bestCandidateHeightCm"] is not None
-                                        else candidate_height_cm
-                                    )
+                                visible_ms = 0
+                                if height_filter_state["firstValidLiveAt"] is not None:
+                                    visible_ms = now_ts - int(height_filter_state["firstValidLiveAt"])
+                                live_height_now = sensor_data.get("liveHeightCm")
+                                live_matches_candidate = (
+                                    live_height_now is not None
+                                    and abs(int(live_height_now) - int(candidate_height_cm)) <= HEIGHT_LOCK_LIVE_MATCH_TOLERANCE_CM
+                                )
+                                if (
+                                    held_ms >= max(250, HEIGHT_STABLE_HOLD_MS)
+                                    and stable_range <= HEIGHT_HOLD_RANGE_CM
+                                    and visible_ms >= max(300, HEIGHT_MIN_VISIBLE_LOCK_MS)
+                                    and live_matches_candidate
+                                ):
+                                    locked_height_cm = int(candidate_height_cm)
+                                    best_locked_height_cm = height_filter_state["bestCandidateHeightCm"]
+                                    if (
+                                        best_locked_height_cm is not None
+                                        and abs(int(best_locked_height_cm) - int(candidate_height_cm)) <= HEIGHT_LOCK_LIVE_MATCH_TOLERANCE_CM
+                                    ):
+                                        locked_height_cm = int(best_locked_height_cm)
+                                    trusted_peak_height_cm = height_filter_state.get("trustedPeakHeightCm")
+                                    if (
+                                        trusted_peak_height_cm is not None
+                                        and int(trusted_peak_height_cm) > locked_height_cm
+                                        and int(trusted_peak_height_cm) <= (locked_height_cm + HEIGHT_TRUSTED_PEAK_OVERRIDE_CM)
+                                    ):
+                                        locked_height_cm = int(trusted_peak_height_cm)
                                     peak_live_height_cm = height_filter_state["peakLiveHeightCm"]
                                     if (
                                         peak_live_height_cm is not None
-                                        and locked_height_cm < (int(peak_live_height_cm) - 3)
+                                        and locked_height_cm < (int(peak_live_height_cm) - HEIGHT_LOCK_MIN_PEAK_MARGIN_CM)
                                     ):
                                         height_filter_state["stableSince"] = None
                                         if not sensor_data["heightStable"]:
@@ -1949,8 +2238,8 @@ def handle_line(line: str):
                                 height_filter_state["stableSince"] = None
                                 if not sensor_data["heightStable"]:
                                     sensor_data["heightPhase"] = "measuring"
-                                    sensor_data["statusMessage"] = "Re-center under the sensor"
-                                    _sync_measurement_flags_locked("Re-center under the sensor")
+                                    sensor_data["statusMessage"] = "Wait for a stable height"
+                                    _sync_measurement_flags_locked("Wait for a stable height")
                         else:
                             height_filter_state["stableSince"] = None
                             if not sensor_data["heightStable"]:
@@ -1969,13 +2258,69 @@ def handle_line(line: str):
                     not sensor_data["heightStable"]
                     and started_at is not None
                     and (now_ts - int(started_at)) >= max(1200, HEIGHT_FORCE_LOCK_MS)
-                    and height_filter_state["bestCandidateHeightCm"] is not None
+                    and (
+                        height_filter_state["bestCandidateHeightCm"] is not None
+                        or height_filter_state["fallbackCandidateHeightCm"] is not None
+                        or height_filter_state["trustedPeakHeightCm"] is not None
+                    )
                 ):
-                    candidate_height_cm = int(height_filter_state["bestCandidateHeightCm"])
+                    trusted_peak_height_cm = height_filter_state.get("trustedPeakHeightCm")
+                    candidate_source = "best"
+                    candidate_range = height_filter_state["bestCandidateRangeCm"]
+                    candidate_height_cm = int(
+                        height_filter_state["bestCandidateHeightCm"]
+                        if height_filter_state["bestCandidateHeightCm"] is not None
+                        else (
+                            height_filter_state["fallbackCandidateHeightCm"]
+                            if height_filter_state["fallbackCandidateHeightCm"] is not None
+                            else trusted_peak_height_cm
+                        )
+                    )
+                    if height_filter_state["bestCandidateHeightCm"] is None:
+                        candidate_source = "fallback" if height_filter_state["fallbackCandidateHeightCm"] is not None else "trusted_peak"
+                        candidate_range = height_filter_state["fallbackCandidateRangeCm"]
                     peak_live_height_cm = height_filter_state["peakLiveHeightCm"]
+                    visible_ms = 0
+                    if height_filter_state["firstValidLiveAt"] is not None:
+                        visible_ms = now_ts - int(height_filter_state["firstValidLiveAt"])
+                    live_height_now = sensor_data.get("liveHeightCm")
+                    if (
+                        visible_ms < max(300, HEIGHT_MIN_VISIBLE_LOCK_MS)
+                        or (
+                            trusted_peak_height_cm is None
+                            and (
+                                live_height_now is None
+                                or abs(int(live_height_now) - int(candidate_height_cm)) > HEIGHT_LOCK_LIVE_MATCH_TOLERANCE_CM
+                            )
+                        )
+                    ):
+                        sensor_data["heightPhase"] = "measuring"
+                        sensor_data["statusMessage"] = "Wait for a stable height"
+                        _sync_measurement_flags_locked("Wait for a stable height")
+                        return
+                    if (
+                        candidate_source != "trusted_peak"
+                        and candidate_range is not None
+                        and candidate_range > HEIGHT_FORCE_LOCK_MAX_RANGE_CM
+                    ):
+                        sensor_data["heightPhase"] = "measuring"
+                        sensor_data["statusMessage"] = "Wait for a stable height"
+                        _sync_measurement_flags_locked("Wait for a stable height")
+                        return
+                    minimum_lockable_height_cm = None
+                    if peak_live_height_cm is not None and int(peak_live_height_cm) >= HEIGHT_STANDING_MIN_CM:
+                        minimum_lockable_height_cm = max(
+                            HEIGHT_STANDING_MIN_CM,
+                            int(peak_live_height_cm) - HEIGHT_DROP_REJECT_CM,
+                        )
+                    if minimum_lockable_height_cm is not None and candidate_height_cm < minimum_lockable_height_cm:
+                        sensor_data["heightPhase"] = "measuring"
+                        sensor_data["statusMessage"] = "Hold still at full height"
+                        _sync_measurement_flags_locked("Hold still at full height")
+                        return
                     if (
                         peak_live_height_cm is not None
-                        and candidate_height_cm < (int(peak_live_height_cm) - 3)
+                        and candidate_height_cm < (int(peak_live_height_cm) - HEIGHT_LOCK_MIN_PEAK_MARGIN_CM)
                     ):
                         sensor_data["heightPhase"] = "measuring"
                         sensor_data["statusMessage"] = "Re-center under the sensor"
@@ -1990,8 +2335,8 @@ def handle_line(line: str):
                         serial_state["lastHeightAt"] = line_ts
                         recompute_bmi_locked()
                         _sync_measurement_flags_locked("Final measurement locked")
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Height measurement processing error: {e} | line={line!r}")
 
 
 def read_serial_data():
@@ -2200,6 +2545,111 @@ def sensor_weight_calibration_offset():
             "ok": True,
             "offsetKg": round(_get_weight_calibration_offset_kg(), 4),
             "message": "Weight calibration offset updated.",
+        })
+
+
+@app.get("/sensor/calibration/height")
+def sensor_height_calibration_status():
+    with data_lock:
+        raw_distance_cm = _latest_live_distance_cm_locked()
+        estimated_height_cm = None if raw_distance_cm is None else round(_apply_height_calibration(raw_distance_cm), 3)
+        return jsonify({
+            "ok": True,
+            "sensorToPlatformCm": round(_get_height_sensor_to_platform_cm(), 4),
+            "offsetCm": round(_get_height_calibration_offset_cm(), 4),
+            "updatedAt": height_calibration_state.get("updatedAt"),
+            "source": height_calibration_state.get("source"),
+            "file": HEIGHT_CALIBRATION_FILE,
+            "rawDistanceCm": raw_distance_cm,
+            "liveHeightCm": sensor_data.get("liveHeightCm"),
+            "stableHeightCm": sensor_data.get("heightCm"),
+            "estimatedHeightCm": estimated_height_cm,
+            "serialConnected": bool(serial_state.get("connected")),
+            "serialReceivingData": _is_recent(serial_state.get("lastLineAt")),
+            "liveFresh": _is_recent(serial_state.get("lastLiveHeightAt"), max(2500, SYSTEM_COMPONENT_FRESH_MS)),
+            "statusMessage": sensor_data.get("statusMessage") or "Stand under sensor",
+            "phase": sensor_data.get("heightPhase") or "idle",
+        })
+
+
+@app.post("/sensor/calibration/height/reference")
+def sensor_height_calibration_reference():
+    payload = request.get_json(silent=True) or {}
+    known_height_value = payload.get("knownHeightCm")
+
+    try:
+        known_height_cm = float(known_height_value)
+    except Exception:
+        return jsonify({"ok": False, "error": "knownHeightCm must be a number."}), 400
+
+    if not math.isfinite(known_height_cm) or known_height_cm <= 0:
+        return jsonify({"ok": False, "error": "knownHeightCm must be greater than 0."}), 400
+
+    with data_lock:
+        raw_distance_cm = _latest_live_distance_cm_locked()
+        if raw_distance_cm is None:
+            return jsonify({
+                "ok": False,
+                "error": "No live ToF reading available. Stand under the sensor and wait for live distance data.",
+            }), 400
+
+        new_offset_cm = round(known_height_cm - (_get_height_sensor_to_platform_cm() - raw_distance_cm), 4)
+        _set_height_calibration_locked(offset_cm=new_offset_cm, source="reference")
+        _reset_height_measurement_locked("Stand under sensor")
+
+        return jsonify({
+            "ok": True,
+            "knownHeightCm": round(known_height_cm, 4),
+            "capturedRawDistanceCm": round(raw_distance_cm, 4),
+            "offsetCm": round(_get_height_calibration_offset_cm(), 4),
+            "message": "ToF reference height applied. Step away, then stand back under the sensor to verify.",
+        })
+
+
+@app.post("/sensor/calibration/height/offset")
+def sensor_height_calibration_offset():
+    payload = request.get_json(silent=True) or {}
+    offset_value = payload.get("offsetCm")
+
+    try:
+        offset_cm = float(offset_value)
+    except Exception:
+        return jsonify({"ok": False, "error": "offsetCm must be a number."}), 400
+
+    if not math.isfinite(offset_cm):
+        return jsonify({"ok": False, "error": "offsetCm must be a finite number."}), 400
+
+    with data_lock:
+        _set_height_calibration_locked(offset_cm=offset_cm, source="manual")
+        _reset_height_measurement_locked("Stand under sensor")
+        return jsonify({
+            "ok": True,
+            "offsetCm": round(_get_height_calibration_offset_cm(), 4),
+            "message": "ToF calibration offset updated.",
+        })
+
+
+@app.post("/sensor/calibration/height/platform")
+def sensor_height_calibration_platform():
+    payload = request.get_json(silent=True) or {}
+    platform_value = payload.get("sensorToPlatformCm")
+
+    try:
+        sensor_to_platform_cm = float(platform_value)
+    except Exception:
+        return jsonify({"ok": False, "error": "sensorToPlatformCm must be a number."}), 400
+
+    if not math.isfinite(sensor_to_platform_cm) or sensor_to_platform_cm <= 0:
+        return jsonify({"ok": False, "error": "sensorToPlatformCm must be greater than 0."}), 400
+
+    with data_lock:
+        _set_height_calibration_locked(sensor_to_platform_cm=sensor_to_platform_cm, source="manual")
+        _reset_height_measurement_locked("Stand under sensor")
+        return jsonify({
+            "ok": True,
+            "sensorToPlatformCm": round(_get_height_sensor_to_platform_cm(), 4),
+            "offsetCm": round(_get_height_calibration_offset_cm(), 4),
+            "message": "Sensor-to-platform distance updated.",
         })
 
 
@@ -2898,6 +3348,7 @@ def start_reader_once():
             return
         if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
             _load_weight_calibration_state()
+            _load_height_calibration_state()
             load_face_db()
             threading.Thread(target=read_serial_data, daemon=True).start()
             threading.Thread(target=firebase_sync_loop, daemon=True).start()

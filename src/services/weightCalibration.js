@@ -69,3 +69,28 @@ export function setWeightCalibrationOffset(offsetKg, signal) {
     body: JSON.stringify({ offsetKg }),
   }, signal);
 }
+
+export function getHeightCalibrationStatus(signal) {
+  return requestCalibration("/sensor/calibration/height", { method: "GET" }, signal);
+}
+
+export function applyHeightReferenceCalibration(knownHeightCm, signal) {
+  return requestCalibration("/sensor/calibration/height/reference", {
+    method: "POST",
+    body: JSON.stringify({ knownHeightCm }),
+  }, signal);
+}
+
+export function setHeightCalibrationOffset(offsetCm, signal) {
+  return requestCalibration("/sensor/calibration/height/offset", {
+    method: "POST",
+    body: JSON.stringify({ offsetCm }),
+  }, signal);
+}
+
+export function setHeightSensorToPlatform(sensorToPlatformCm, signal) {
+  return requestCalibration("/sensor/calibration/height/platform", {
+    method: "POST",
+    body: JSON.stringify({ sensorToPlatformCm }),
+  }, signal);
+}

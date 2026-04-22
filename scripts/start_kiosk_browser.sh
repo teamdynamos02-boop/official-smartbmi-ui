@@ -10,7 +10,13 @@ STARTUP_WAIT_SECONDS="${SMARTBMI_STARTUP_WAIT_SECONDS:-120}"
 POST_READY_CAMERA_SETTLE_SECONDS="${SMARTBMI_POST_READY_CAMERA_SETTLE_SECONDS:-4}"
 KIOSK_PROFILE_DIR="${SMARTBMI_KIOSK_PROFILE_DIR:-$HOME/.config/smartbmi-kiosk-browser}"
 RENDERER_MODE="${SMARTBMI_KIOSK_RENDERER_MODE:-auto}"
+ENABLE_KIOSK_BROWSER="${SMARTBMI_ENABLE_KIOSK_BROWSER:-false}"
 BROWSER_BIN=""
+
+if [[ ! "${ENABLE_KIOSK_BROWSER}" =~ ^([Tt][Rr][Uu][Ee]|1|[Yy][Ee][Ss]|[Oo][Nn])$ ]]; then
+  echo "Chromium auto-launch is disabled for calibration mode."
+  exec tail -f /dev/null
+fi
 
 for candidate in /usr/lib/chromium/chromium /usr/lib/chromium-browser/chromium-browser chromium-browser chromium google-chrome-stable google-chrome; do
   if [[ -x "$candidate" ]]; then
@@ -118,9 +124,7 @@ exec env -u CHROMIUM_FLAGS -u CHROME_EXTRA_ARGS -u CHROMIUM_USER_FLAGS "$BROWSER
   --use-fake-ui-for-media-stream \
   --check-for-update-interval=31536000 \
   --autoplay-policy=no-user-gesture-required \
-  --start-maximized \
   "${RENDERER_FLAGS[@]}" \
   --app="$APP_URL" \
-  --kiosk \
   --incognito \
   "$APP_URL"
