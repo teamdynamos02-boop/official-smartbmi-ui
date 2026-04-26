@@ -110,6 +110,7 @@ exec env -u CHROMIUM_FLAGS -u CHROME_EXTRA_ARGS -u CHROMIUM_USER_FLAGS -u CHROME
   --user-data-dir=/home/dynamos/.config/smartbmi-kiosk-browser \
   --password-store=basic \
   --use-mock-keychain \
+  --kiosk \
   --noerrdialogs \
   --no-first-run \
   --no-default-browser-check \
@@ -117,10 +118,15 @@ exec env -u CHROMIUM_FLAGS -u CHROME_EXTRA_ARGS -u CHROMIUM_USER_FLAGS -u CHROME
   --disable-session-crashed-bubble \
   --disable-component-update \
   --disable-background-networking \
+  --disable-background-timer-throttling \
+  --disable-backgrounding-occluded-windows \
+  --disable-renderer-backgrounding \
   --disable-sync \
+  --disable-default-apps \
   --disable-extensions \
-  --disable-features=Translate,PasswordManagerOnboarding,AutofillServerCommunication,MediaRouter,OptimizationHints,NotificationTriggers,WebRtcPipeWireCamera \
+  --disable-features=Translate,TranslateUI,PasswordManagerOnboarding,AutofillServerCommunication,MediaRouter,OptimizationHints,NotificationTriggers,WebRtcPipeWireCamera \
   --disable-notifications \
+  --disable-dev-shm-usage \
   --disable-prompt-on-repost \
   --disable-save-password-bubble \
   --disable-restore-session-state \
@@ -132,5 +138,4 @@ exec env -u CHROMIUM_FLAGS -u CHROME_EXTRA_ARGS -u CHROMIUM_USER_FLAGS -u CHROME
   --check-for-update-interval=31536000 \
   --autoplay-policy=no-user-gesture-required \
   --app="${APP_URL}" \
-  --incognito \
-  "${APP_URL}" >>"${KIOSK_BROWSER_LOG}" 2>&1
+  --incognito >>"${KIOSK_BROWSER_LOG}" 2>&1

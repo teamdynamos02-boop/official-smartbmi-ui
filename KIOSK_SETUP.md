@@ -10,6 +10,9 @@ This project now includes a production-style kiosk setup so the machine can boot
 - Runs the OLED updater at boot when present
 - Can launch Chromium after the graphical session starts when kiosk browser mode is enabled
 - Waits for the backend and frontend to answer before opening the browser
+- Runs Chromium in single-instance kiosk mode with taskbar hiding only while the kiosk session is active
+- Saves registered-user profiles and measurements locally first, then syncs them to Firebase in the background
+- Keeps guest measurements out of local storage and out of Firebase
 - Enables desktop autologin for the kiosk user so no password prompt is needed after reboot
 - Lets the Arduino firmware auto-run on power, while the backend claims the serial port and reconnects automatically if the stream stalls
 
@@ -61,8 +64,9 @@ sudo -u "$USER" systemctl --user restart smartbmi-kiosk.service
 
 - Backend debug mode is now controlled by env vars and defaults to `false`.
 - The browser launcher script automatically looks for `chromium-browser`, `chromium`, or Google Chrome.
-- Calibration mode currently defaults `SMARTBMI_ENABLE_KIOSK_BROWSER=false`, so Chromium will not auto-open until that env var is explicitly set to `true`.
+- Chromium now auto-opens by default on boot. For calibration mode, explicitly set `SMARTBMI_ENABLE_KIOSK_BROWSER=false` before starting `smartbmi-kiosk.service` or `scripts/start_kiosk_session.sh`.
 - The frontend service uses `npm run serve:prod`, which serves the built `dist/` output.
+- Local kiosk persistence is now split across `local_users.json`, `local_measurements.json`, and `pending_sync.json`.
 - The installer also attempts to install the face-recognition and detection packages used by the camera pipeline. Those can take longer on Raspberry Pi hardware.
 - You do not need to type or store the Raspberry Pi password for kiosk startup. LightDM autologin signs in the kiosk user automatically.
 - The Arduino does not need a Linux service. Its flashed firmware starts automatically when the board powers on. Deployment readiness here means the Pi backend starts on boot, opens `/dev/ttyACM0`, and automatically reconnects if the serial stream stalls.

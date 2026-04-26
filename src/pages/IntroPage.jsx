@@ -1,12 +1,23 @@
 export default function IntroPage({ onStart }) {
+  const handleStart = () => {
+    console.log("[DEBUG] WELCOME START CLICKED");
+    if (typeof onStart === "function") onStart();
+  };
+
   return (
     <div
       className="intro-tap-zone"
       role="button"
       tabIndex={0}
-      onClick={onStart}
+      onPointerUp={(e) => {
+        if (e.target instanceof Element && e.target.closest("a,button")) return;
+        handleStart();
+      }}
       onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") onStart();
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          handleStart();
+        }
       }}
       aria-label="Tap anywhere to start"
     >
@@ -41,7 +52,15 @@ export default function IntroPage({ onStart }) {
         </div>
       </div>
       <div className="actions">
-        <button className="btn btn-primary btn-xl" onClick={(e) => { e.stopPropagation(); onStart(); }}>Start</button>
+        <a
+          href="?start=1"
+          className="btn btn-primary btn-xl"
+          role="button"
+          onPointerDown={handleStart}
+          onClick={handleStart}
+        >
+          Start
+        </a>
       </div>
     </div>
   );

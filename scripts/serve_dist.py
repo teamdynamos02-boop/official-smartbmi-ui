@@ -23,7 +23,8 @@ class SpaHandler(http.server.SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def log_message(self, format, *args):
-        super().log_message(format, *args)
+        if os.getenv("SMARTBMI_HTTP_ACCESS_LOG", "").strip().lower() in {"1", "true", "yes", "on"}:
+            super().log_message(format, *args)
 
 
 def main():

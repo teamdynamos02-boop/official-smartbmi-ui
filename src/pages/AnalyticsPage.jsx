@@ -1,4 +1,6 @@
+import { useMemo } from "react";
 import { Activity, AlertTriangle, CircleCheckBig, HeartPulse, MoveRight, Scale, ShieldAlert, TrendingUp, Ruler, Stethoscope } from "lucide-react";
+import { getBmiAnalyticsContent, normalizeBmiCategory } from "../services/bmi";
 
 function formatMetric(value, suffix = "") {
   if (value == null || Number.isNaN(Number(value))) return "--";
@@ -22,26 +24,18 @@ function buildAdvice(current, previous, historyCount = 1) {
   const weightDelta = current?.weightKg != null && previous?.weightKg != null
     ? Number((current.weightKg - previous.weightKg).toFixed(1))
     : null;
-  const category = String(current?.category || "").toLowerCase();
+  const normalizedCategory = normalizeBmiCategory(current?.category);
+  const medicalContent = getBmiAnalyticsContent(normalizedCategory);
 
   const addAdvice = (title, lead, body, tone = "neutral", icon = "next") => {
     advice.push({ title, lead, body, tone, icon });
   };
 
-  if (Number.isFinite(bmi)) {
-    if (bmi < 18.5) {
-      addAdvice("Risk", `BMI ${bmi.toFixed(1)} is underweight.`, "Low energy, lower muscle reserve, and slower recovery can happen if this continues.", "warn", "warn");
-      addAdvice("Action", "Increase intake with structure.", "Eat regular balanced meals, increase protein, and do strength-focused activity.", "action", "action");
-    } else if (bmi < 25) {
-      addAdvice("Status", `BMI ${bmi.toFixed(1)} is in the normal range.`, "This range supports lower weight-related risk when you maintain it.", "good", "good");
-      addAdvice("Action", "Protect this range.", "Keep meals balanced, stay active, sleep well, and recheck regularly.", "action", "action");
-    } else if (bmi < 30) {
-      addAdvice("Risk", `BMI ${bmi.toFixed(1)} is in the overweight range.`, "If it stays here, risk for blood pressure, blood sugar, heart strain, and joint stress goes up.", "warn", "warn");
-      addAdvice("Action", "Aim for slow, steady fat loss.", "Walk more, train regularly, cut liquid calories, and reduce oversized portions.", "action", "action");
-    } else {
-      addAdvice("Risk", `BMI ${bmi.toFixed(1)} is in the obese range.`, "Risk is higher for diabetes, heart disease, sleep problems, and joint strain.", "warn", "danger");
-      addAdvice("Action", "Use a structured plan.", "Start with food control, low-impact activity, and medical follow-up if possible.", "action", "action");
-    }
+  if (Number.isFinite(bmi) && medicalContent) {
+    addAdvice("Status Message", `BMI ${bmi.toFixed(1)} is classified as ${medicalContent.title}.`, medicalContent.statusMessage, normalizedCategory === "Normal" ? "good" : "warn", normalizedCategory === "Normal" ? "good" : "warn");
+    addAdvice("Prediction", medicalContent.title, medicalContent.prediction, "trend", "trend");
+    addAdvice("Recommended Action", medicalContent.title, medicalContent.recommendedAction, "action", "action");
+    addAdvice("Professional Approval", medicalContent.title, medicalContent.professionalApprovalNote, normalizedCategory === "Obese" ? "danger" : "neutral", normalizedCategory === "Obese" ? "danger" : "next");
   }
 
   if (weightDelta != null) {
@@ -52,7 +46,7 @@ function buildAdvice(current, previous, historyCount = 1) {
 
   if (historyCount <= 1) {
     addAdvice("Next check", "This is your first recorded session.", "More readings will make the advice more accurate.", "neutral", "next");
-  } else if (category.includes("normal")) {
+  } else if (normalizedCategory === "Normal") {
     addAdvice("Next check", "Use this as your maintenance baseline.", "Try to keep future readings close to this range.", "good", "next");
   } else {
     addAdvice("Next check", "Recheck on a schedule.", "That will show whether your BMI is improving, stable, or getting worse.", "neutral", "next");
@@ -72,7 +66,10 @@ function AdviceIcon({ icon }) {
 }
 
 export default function AnalyticsPage({ user, history = [], onBack, onFinish }) {
-  const sortedHistory = Array.isArray(history) ? [...history].sort((a, b) => (Number(a.capturedAt) || 0) - (Number(b.capturedAt) || 0)) : [];
+  const sortedHistory = useMemo(
+    () => (Array.isArray(history) ? [...history].sort((a, b) => (Number(a.capturedAt) || 0) - (Number(b.capturedAt) || 0)) : []),
+    [history],
+  );
   const fallbackCurrent = {
     weightKg: user?.weightKg ?? null,
     heightCm: user?.heightCm ?? null,
@@ -86,11 +83,11 @@ export default function AnalyticsPage({ user, history = [], onBack, onFinish }) 
   const weightDelta = current?.weightKg != null && previous?.weightKg != null ? Number((current.weightKg - previous.weightKg).toFixed(1)) : null;
   const heightDelta = current?.heightCm != null && previous?.heightCm != null ? Number((current.heightCm - previous.heightCm).toFixed(1)) : null;
   const bmiDelta = current?.bmi != null && previous?.bmi != null ? Number((current.bmi - previous.bmi).toFixed(1)) : null;
-  const advice = buildAdvice(current, previous, points.length);
+  const advice = useMemo(() => buildAdvice(current, previous, points.length), [current, previous, points.length]);
 
   return (
     <div className="page-with-actions analytics-page">
-      <div className="screen-grid analytics-screen-grid">
+      <div className="analytics-layout">
         <div className="panel panel-large analytics-main-panel">
           <div className="analytics-top">
             <div className="analytics-head">
@@ -118,57 +115,63 @@ export default function AnalyticsPage({ user, history = [], onBack, onFinish }) 
               </div>
               <div className="analytics-stat-card">
                 <div className="analytics-stat-label"><HeartPulse /> Overall Progress</div>
-                <div className="analytics-stat-value">{current?.category || "--"}</div>
+                <div className="analytics-stat-value">{normalizeBmiCategory(current?.category) || "--"}</div>
                 <div className="analytics-stat-note">{points.length} recorded session{points.length === 1 ? "" : "s"}</div>
               </div>
             </div>
           </div>
 
-          <div className="analytics-history-grid">
-            <div className="panel analytics-history-panel">
-              <div className="analytics-panel-head">Measurement History</div>
-              <div className="analytics-history-list">
-                {points.slice().reverse().map((entry, index) => (
-                  <div className="analytics-history-item" key={`${entry?.capturedAt || "session"}-${index}`}>
-                    <div className="analytics-history-time">{formatCapturedLabel(entry, points.length - index - 1)}</div>
-                    <div className="analytics-history-metrics">
-                      <div className="analytics-history-metric-chip">
-                        <span className="analytics-history-metric-label">Weight</span>
-                        <strong className="analytics-history-metric-value">{formatMetric(entry?.weightKg, " kg")}</strong>
-                      </div>
-                      <div className="analytics-history-metric-chip">
-                        <span className="analytics-history-metric-label">Height</span>
-                        <strong className="analytics-history-metric-value">{formatMetric(entry?.heightCm, " cm")}</strong>
-                      </div>
-                      <div className="analytics-history-metric-chip">
-                        <span className="analytics-history-metric-label">BMI</span>
-                        <strong className="analytics-history-metric-value">{formatMetric(entry?.bmi)}</strong>
-                      </div>
+          <div className="panel analytics-history-panel">
+            <div className="analytics-panel-head">Measurement History</div>
+            <div className="analytics-history-list">
+              {points.slice().reverse().map((entry, index) => (
+                <div className="analytics-history-item" key={`${entry?.capturedAt || "session"}-${index}`}>
+                  <div className="analytics-history-time">{formatCapturedLabel(entry, points.length - index - 1)}</div>
+                  <div className="analytics-history-metrics">
+                    <div className="analytics-history-metric-chip">
+                      <span className="analytics-history-metric-label">Weight</span>
+                      <strong className="analytics-history-metric-value">{formatMetric(entry?.weightKg, " kg")}</strong>
                     </div>
-                    <div className="analytics-history-category">{entry?.category || "--"}</div>
+                    <div className="analytics-history-metric-chip">
+                      <span className="analytics-history-metric-label">Height</span>
+                      <strong className="analytics-history-metric-value">{formatMetric(entry?.heightCm, " cm")}</strong>
+                    </div>
+                    <div className="analytics-history-metric-chip">
+                      <span className="analytics-history-metric-label">BMI</span>
+                      <strong className="analytics-history-metric-value">{formatMetric(entry?.bmi)}</strong>
+                    </div>
                   </div>
-                ))}
-              </div>
+                  <div className="analytics-history-category">{normalizeBmiCategory(entry?.category) || "--"}</div>
+                </div>
+              ))}
             </div>
+          </div>
+        </div>
 
-            <div className="panel analytics-advice-panel">
-              <div className="analytics-panel-head"><Stethoscope /> Health Advice</div>
-              <div className="analytics-advice-list">
-                {advice.map((item) => (
-                  <div className={`analytics-advice-item analytics-advice-item-${item.tone}`} key={`${item.title}-${item.lead}-${item.body}`}>
-                    <div className="analytics-advice-title-row">
-                      <span className="analytics-advice-icon"><AdviceIcon icon={item.icon} /></span>
-                      <strong>{item.title}</strong>
-                    </div>
-                    <div className="analytics-advice-lead">{item.lead}</div>
-                    <div className="analytics-advice-body">{item.body}</div>
-                  </div>
-                ))}
+        <div className="panel analytics-advice-panel">
+          <div className="analytics-panel-head" style={{ fontSize: "22px", fontWeight: 700 }}><Stethoscope /> Health Advice</div>
+          <div className="analytics-advice-list">
+            {advice.map((item) => (
+              <div
+                className={`analytics-advice-item analytics-advice-item-${item.tone} analytics-advice-item-${String(item.title || "").toLowerCase().replace(/\s+/g, "-")}`}
+                key={`${item.title}-${item.lead}-${item.body}`}
+                style={{
+                  padding: "14px",
+                  borderRadius: "10px",
+                  marginBottom: "10px",
+                }}
+              >
+                <div className="analytics-advice-title-row">
+                  <span className="analytics-advice-icon"><AdviceIcon icon={item.icon} /></span>
+                  <strong style={{ fontSize: "18px", fontWeight: 600 }}>{item.title}</strong>
+                </div>
+                <div className="analytics-advice-lead" style={{ fontSize: "16px", lineHeight: 1.5 }}>{item.lead}</div>
+                <div className="analytics-advice-body" style={{ fontSize: "16px", lineHeight: 1.5 }}>{item.body}</div>
               </div>
-              <div className="analytics-medical-note">
-                Note: If you need diagnosis, treatment decisions, or symptom review, please seek medical guidance.
-              </div>
-            </div>
+            ))}
+          </div>
+          <div className="analytics-medical-note" style={{ fontSize: "16px", lineHeight: 1.5 }}>
+            Note: If you need diagnosis, treatment decisions, or symptom review, please seek medical guidance.
           </div>
         </div>
       </div>

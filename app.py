@@ -106,6 +106,8 @@ SERIAL_STARTUP_GRACE_MS = int(os.getenv("SERIAL_STARTUP_GRACE_MS", "20000"))
 SERIAL_STALE_REOPEN_MS = int(os.getenv("SERIAL_STALE_REOPEN_MS", "60000"))
 SERIAL_COLD_BOOT_SUPPRESS_REOPEN_MS = int(os.getenv("SERIAL_COLD_BOOT_SUPPRESS_REOPEN_MS", "90000"))
 SERIAL_POST_RESET_WAIT_MS = int(os.getenv("SERIAL_POST_RESET_WAIT_MS", "3500"))
+SERIAL_RECONNECT_INTERVAL_MS = int(os.getenv("SERIAL_RECONNECT_INTERVAL_MS", "5000"))
+SERIAL_INCLUDE_UNDESCRIBED_PORTS = str(os.getenv("SERIAL_INCLUDE_UNDESCRIBED_PORTS", "false")).strip().lower() in {"1", "true", "yes", "on"}
 
 # TOF SENSOR CUSTOMIZATION HERE
 # Set the exact distance from the LiDAR sensor down to the standing platform/scale.
@@ -182,6 +184,11 @@ FACE_INSIGHTFACE_DET_HEIGHT = int(os.getenv("FACE_INSIGHTFACE_DET_HEIGHT", "640"
 RESTRICTION_MODEL_PATH = os.getenv("RESTRICTION_MODEL_PATH", "models/restrictions.pt")
 RESTRICTION_CONFIDENCE = float(os.getenv("RESTRICTION_CONFIDENCE", "0.35"))
 LOCAL_DATA_FILE = os.getenv("LOCAL_DATA_FILE", "local_data.json")
+LOCAL_USERS_FILE = os.getenv("LOCAL_USERS_FILE", "local_users.json")
+LOCAL_MEASUREMENTS_FILE = os.getenv("LOCAL_MEASUREMENTS_FILE", "local_measurements.json")
+PENDING_SYNC_FILE = os.getenv("PENDING_SYNC_FILE", "pending_sync.json")
+LOCAL_SYNC_INTERVAL_MS = int(os.getenv("LOCAL_SYNC_INTERVAL_MS", "30000"))
+LOCAL_SYNC_BACKOFF_MS = int(os.getenv("LOCAL_SYNC_BACKOFF_MS", "60000"))
 
 # SYSTEM MONITORING CUSTOMIZATION HERE
 # These values control device identity, internet checks, and freshness windows.
@@ -198,6 +205,10 @@ FIREBASE_RTDB_URL = os.getenv("FIREBASE_RTDB_URL", "https://smartbmi-demo-defaul
 FIREBASE_RTDB_AUTH = os.getenv("FIREBASE_RTDB_AUTH", "").strip()
 FIREBASE_SYNC_INTERVAL_MS = int(os.getenv("FIREBASE_SYNC_INTERVAL_MS", "15000"))
 FIREBASE_HISTORY_INTERVAL_MS = int(os.getenv("FIREBASE_HISTORY_INTERVAL_MS", "60000"))
+FIREBASE_SYNC_REQUEST_TIMEOUT_MS = int(os.getenv("FIREBASE_SYNC_REQUEST_TIMEOUT_MS", "3500"))
+FIREBASE_SYNC_BACKOFF_MIN_MS = int(os.getenv("FIREBASE_SYNC_BACKOFF_MIN_MS", "30000"))
+FIREBASE_SYNC_BACKOFF_MAX_MS = int(os.getenv("FIREBASE_SYNC_BACKOFF_MAX_MS", "300000"))
+FIREBASE_SYNC_SKIP_WHEN_OFFLINE = str(os.getenv("FIREBASE_SYNC_SKIP_WHEN_OFFLINE", "true")).strip().lower() in {"1", "true", "yes", "on"}
 
 # ---------- Shared data ----------
 sensor_data = {
@@ -300,62 +311,450 @@ firebase_sync_state = {
     "historySignature": None,
     "lastHistoryAt": None,
 }
+local_sync_state = {
+    "status": "idle",
+    "detail": "Local profile and measurement sync is idle.",
+    "detectedAt": None,
+    "lastSuccessAt": None,
+    "lastAttemptAt": None,
+    "pendingCount": 0,
+    "lastError": None,
+}
 
 
-def _load_local_data_payload():
+def _read_json_file(path, default_payload):
     try:
-        if not os.path.exists(LOCAL_DATA_FILE):
-            return {"users": {}}
-        with open(LOCAL_DATA_FILE, "r", encoding="utf-8") as f:
+        if not os.path.exists(path):
+            return json.loads(json.dumps(default_payload))
+        with open(path, "r", encoding="utf-8") as f:
             payload = json.load(f)
         if isinstance(payload, dict):
-            payload.setdefault("users", {})
-            if isinstance(payload["users"], dict):
-                return payload
+            return payload
     except Exception as e:
-        print(f"Failed to load local data file {LOCAL_DATA_FILE}: {e}")
-    return {"users": {}}
+        print(f"Failed to load JSON file {path}: {e}")
+    return json.loads(json.dumps(default_payload))
 
 
-def _save_local_data_payload(payload):
-    folder = os.path.dirname(os.path.abspath(LOCAL_DATA_FILE))
+def _write_json_file(path, payload):
+    folder = os.path.dirname(os.path.abspath(path))
     if folder:
         os.makedirs(folder, exist_ok=True)
-    tmp_path = f"{LOCAL_DATA_FILE}.tmp"
+    tmp_path = f"{path}.tmp"
     with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2)
         f.write("\n")
-    os.replace(tmp_path, LOCAL_DATA_FILE)
+    os.replace(tmp_path, path)
+
+
+def _is_guest_user_id(user_id):
+    return str(user_id or "").strip().lower().startswith("guest-")
+
+
+def _default_users_payload():
+    return {"users": {}}
+
+
+def _default_measurements_payload():
+    return {"measurements": {}}
+
+
+def _default_pending_sync_payload():
+    return {"items": []}
+
+
+def _load_local_users_payload():
+    payload = _read_json_file(LOCAL_USERS_FILE, _default_users_payload())
+    payload.setdefault("users", {})
+    if not isinstance(payload.get("users"), dict):
+        payload["users"] = {}
+    return payload
+
+
+def _save_local_users_payload(payload):
+    _write_json_file(LOCAL_USERS_FILE, payload)
+
+
+def _load_local_measurements_payload():
+    payload = _read_json_file(LOCAL_MEASUREMENTS_FILE, _default_measurements_payload())
+    payload.setdefault("measurements", {})
+    if not isinstance(payload.get("measurements"), dict):
+        payload["measurements"] = {}
+    return payload
+
+
+def _save_local_measurements_payload(payload):
+    _write_json_file(LOCAL_MEASUREMENTS_FILE, payload)
+
+
+def _load_pending_sync_payload():
+    payload = _read_json_file(PENDING_SYNC_FILE, _default_pending_sync_payload())
+    payload.setdefault("items", [])
+    if not isinstance(payload.get("items"), list):
+        payload["items"] = []
+    return payload
+
+
+def _save_pending_sync_payload(payload):
+    _write_json_file(PENDING_SYNC_FILE, payload)
+
+
+def _load_local_data_payload():
+    return {
+        "users": _load_local_users_payload().get("users", {}),
+        "measurements": _load_local_measurements_payload().get("measurements", {}),
+        "pendingSync": _load_pending_sync_payload().get("items", []),
+    }
+
+
+def _save_local_data_payload(payload):
+    if isinstance(payload, dict):
+        _save_local_users_payload({"users": dict(payload.get("users") or {})})
+        _save_local_measurements_payload({"measurements": dict(payload.get("measurements") or {})})
+        pending_items = payload.get("pendingSync")
+        if isinstance(pending_items, list):
+            _save_pending_sync_payload({"items": pending_items})
 
 
 def _ensure_local_user_record(payload, user_id):
     users = payload.setdefault("users", {})
-    record = users.setdefault(str(user_id), {})
+    measurements = payload.setdefault("measurements", {})
+    uid = str(user_id)
+    record = users.setdefault(uid, {})
     if not isinstance(record, dict):
         record = {}
-        users[str(user_id)] = record
+        users[uid] = record
     record.setdefault("profile", {})
     record.setdefault("measurements", [])
     if not isinstance(record["measurements"], list):
         record["measurements"] = []
+    measurement_list = measurements.setdefault(uid, [])
+    if not isinstance(measurement_list, list):
+        measurement_list = []
+        measurements[uid] = measurement_list
+    record["measurements"] = measurement_list
     return record
+
+
+def _normalize_local_profile_entry(user_id, entry):
+    uid = str(user_id or "").strip()
+    if not uid or _is_guest_user_id(uid):
+        return None
+    if not isinstance(entry, dict):
+        entry = {}
+    now = now_ms()
+    updated_at = int(entry.get("updatedAt") or now)
+    registered_at = int(entry.get("registeredAt") or updated_at)
+    sync_status = str(entry.get("sync_status") or entry.get("syncStatus") or "pending").strip().lower()
+    if sync_status not in {"pending", "synced"}:
+        sync_status = "pending"
+    return {
+        "id": uid,
+        "user_id": uid,
+        "name": entry.get("name") or entry.get("fullName") or "",
+        "fullName": entry.get("name") or entry.get("fullName") or "",
+        "age": entry.get("age"),
+        "sex": entry.get("sex") or "",
+        "password": entry.get("password") or "12345",
+        "mustResetPassword": bool(entry.get("mustResetPassword", True)),
+        "registeredAt": registered_at,
+        "updatedAt": updated_at,
+        "sync_status": sync_status,
+        "syncedAt": entry.get("syncedAt"),
+    }
 
 
 def _normalize_local_measurement_entry(entry):
     if not isinstance(entry, dict):
         return None
-    captured_at = int(entry.get("capturedAt") or 0)
+    user_id = str(entry.get("user_id") or entry.get("userId") or entry.get("idUser") or "").strip()
+    if user_id and _is_guest_user_id(user_id):
+        return None
+    captured_at = int(entry.get("capturedAt") or entry.get("timestamp") or 0)
+    sync_status = str(entry.get("sync_status") or entry.get("syncStatus") or "pending").strip().lower()
+    if sync_status not in {"pending", "synced"}:
+        sync_status = "pending"
     return {
         "id": str(entry.get("id") or ""),
+        "user_id": user_id,
+        "userId": user_id,
+        "name": entry.get("name") or "",
+        "age": entry.get("age"),
+        "sex": entry.get("sex") or "",
         "weightKg": entry.get("weightKg"),
         "heightCm": entry.get("heightCm"),
         "bmi": entry.get("bmi"),
         "category": entry.get("category") or "",
         "capturedAt": captured_at,
+        "timestamp": captured_at,
         "capturedAtFormatted": entry.get("capturedAtFormatted") or "",
         "capturedDate": entry.get("capturedDate") or "",
         "capturedTime": entry.get("capturedTime") or "",
+        "sync_status": sync_status,
+        "syncedAt": entry.get("syncedAt"),
     }
+
+
+def _normalize_bmi_category(value):
+    text = str(value or "").strip().lower()
+    if "under" in text:
+        return "Underweight"
+    if "healthy" in text or "normal" in text:
+        return "Normal"
+    if "over" in text:
+        return "Overweight"
+    if "obes" in text:
+        return "Obese"
+    return "--"
+
+
+def _migrate_legacy_local_data_if_needed():
+    if not LOCAL_DATA_FILE or not os.path.exists(LOCAL_DATA_FILE):
+        return
+    if os.path.exists(LOCAL_USERS_FILE) or os.path.exists(LOCAL_MEASUREMENTS_FILE):
+        return
+    try:
+        legacy = _read_json_file(LOCAL_DATA_FILE, {"users": {}})
+        legacy_users = legacy.get("users") or {}
+        if not isinstance(legacy_users, dict):
+            return
+        users_payload = _default_users_payload()
+        measurements_payload = _default_measurements_payload()
+        pending_payload = _default_pending_sync_payload()
+        for user_id, record in legacy_users.items():
+            uid = str(user_id).strip()
+            if not uid or _is_guest_user_id(uid):
+                continue
+            if not isinstance(record, dict):
+                continue
+            profile = _normalize_local_profile_entry(uid, record.get("profile") or {})
+            if profile is not None:
+                users_payload["users"][uid] = profile
+            measurement_items = []
+            for existing in record.get("measurements") or []:
+                normalized = _normalize_local_measurement_entry({
+                    **(existing or {}),
+                    "user_id": uid,
+                    "name": profile.get("name") if profile else "",
+                    "age": profile.get("age") if profile else None,
+                    "sex": profile.get("sex") if profile else "",
+                    "sync_status": "pending",
+                })
+                if normalized is not None:
+                    measurement_items.append(normalized)
+                    pending_payload["items"].append({
+                        "id": normalized["id"] or f"measurement-{uid}-{normalized['capturedAt']}",
+                        "type": "measurement",
+                        "user_id": uid,
+                        "record_id": normalized["id"] or f"measurement-{uid}-{normalized['capturedAt']}",
+                        "sync_status": "pending",
+                        "createdAt": now_ms(),
+                        "updatedAt": now_ms(),
+                        "payload": normalized,
+                    })
+            if measurement_items:
+                measurements_payload["measurements"][uid] = measurement_items
+            if profile is not None:
+                pending_payload["items"].append({
+                    "id": f"profile-{uid}",
+                    "type": "profile",
+                    "user_id": uid,
+                    "record_id": uid,
+                    "sync_status": "pending",
+                    "createdAt": now_ms(),
+                    "updatedAt": now_ms(),
+                    "payload": profile,
+                })
+        _save_local_users_payload(users_payload)
+        _save_local_measurements_payload(measurements_payload)
+        _save_pending_sync_payload(pending_payload)
+    except Exception as e:
+        print(f"Legacy local data migration failed: {e}")
+
+
+def _build_pending_sync_item(item_type, user_id, record_id, payload):
+    ts = now_ms()
+    return {
+        "id": f"{item_type}-{record_id}",
+        "type": item_type,
+        "user_id": str(user_id),
+        "record_id": str(record_id),
+        "sync_status": "pending",
+        "createdAt": ts,
+        "updatedAt": ts,
+        "lastAttemptAt": None,
+        "lastError": None,
+        "retryCount": 0,
+        "payload": payload,
+    }
+
+
+def _queue_pending_sync_locked(item_type, user_id, record_id, payload):
+    pending_payload = _load_pending_sync_payload()
+    items = [item for item in pending_payload.get("items", []) if not (
+        str(item.get("type")) == str(item_type)
+        and str(item.get("user_id")) == str(user_id)
+        and str(item.get("record_id")) == str(record_id)
+    )]
+    items.append(_build_pending_sync_item(item_type, user_id, record_id, payload))
+    pending_payload["items"] = items[-500:]
+    _save_pending_sync_payload(pending_payload)
+    local_sync_state["pendingCount"] = len(pending_payload["items"])
+
+
+def _mark_local_profile_synced_locked(user_id, synced_at=None):
+    uid = str(user_id)
+    payload = _load_local_users_payload()
+    profile = (payload.get("users") or {}).get(uid)
+    if isinstance(profile, dict):
+        profile["sync_status"] = "synced"
+        profile["syncedAt"] = int(synced_at or now_ms())
+        _save_local_users_payload(payload)
+
+
+def _mark_local_measurement_synced_locked(user_id, measurement_id, synced_at=None):
+    uid = str(user_id)
+    payload = _load_local_measurements_payload()
+    items = (payload.get("measurements") or {}).get(uid) or []
+    changed = False
+    for entry in items:
+        if str(entry.get("id") or "") == str(measurement_id):
+            entry["sync_status"] = "synced"
+            entry["syncedAt"] = int(synced_at or now_ms())
+            changed = True
+            break
+    if changed:
+        _save_local_measurements_payload(payload)
+
+
+def _sync_profile_to_firebase(profile):
+    uid = str(profile.get("user_id") or profile.get("id") or "").strip()
+    if not uid:
+        raise ValueError("Missing user id for profile sync")
+    payload = {
+        "id": uid,
+        "fullName": profile.get("name") or profile.get("fullName") or "",
+        "age": profile.get("age"),
+        "sex": profile.get("sex") or "",
+        "password": profile.get("password") or "12345",
+        "mustResetPassword": bool(profile.get("mustResetPassword", True)),
+        "updatedAt": int(profile.get("updatedAt") or now_ms()),
+        "updatedAtFormatted": time.strftime("%m/%d/%Y %H:%M:%S", time.localtime((int(profile.get("updatedAt") or now_ms())) / 1000.0)),
+        "createdAt": int(profile.get("registeredAt") or profile.get("updatedAt") or now_ms()),
+    }
+    _firebase_request("PATCH", f"users/{uid}", payload)
+
+
+def _sync_measurement_to_firebase(entry):
+    uid = str(entry.get("user_id") or entry.get("userId") or "").strip()
+    measurement_id = str(entry.get("id") or "").strip()
+    if not uid or not measurement_id:
+        raise ValueError("Missing user or measurement id for measurement sync")
+    measurement_payload = {
+        "weightKg": entry.get("weightKg"),
+        "heightCm": entry.get("heightCm"),
+        "bmi": entry.get("bmi"),
+        "category": entry.get("category") or "",
+        "capturedAt": int(entry.get("capturedAt") or entry.get("timestamp") or now_ms()),
+        "capturedAtFormatted": entry.get("capturedAtFormatted") or "",
+        "capturedDate": entry.get("capturedDate") or "",
+        "capturedTime": entry.get("capturedTime") or "",
+        "capturedTimezone": time.tzname[0] if time.tzname else "UTC",
+    }
+    _firebase_request("PUT", f"users/{uid}/measurements/{measurement_id}", measurement_payload)
+    _firebase_request("PUT", f"systemMonitoring/{DEVICE_ID}/dashboard/recentMeasurements/{measurement_id}", {
+        "userId": uid,
+        "name": entry.get("name") or "",
+        "age": entry.get("age"),
+        "sex": entry.get("sex") or "",
+        "weightKg": entry.get("weightKg"),
+        "heightCm": entry.get("heightCm"),
+        "bmi": entry.get("bmi"),
+        "category": entry.get("category") or "",
+        "status": "success",
+        "capturedAt": measurement_payload["capturedAt"],
+        "capturedAtFormatted": measurement_payload["capturedAtFormatted"],
+        "capturedTime": measurement_payload["capturedTime"],
+        "syncStatus": "synced",
+    })
+
+
+def run_local_data_sync_once():
+    ts = now_ms()
+    with local_data_lock:
+        pending_payload = _load_pending_sync_payload()
+        pending_items = list(pending_payload.get("items") or [])
+        local_sync_state["pendingCount"] = len(pending_items)
+        local_sync_state["lastAttemptAt"] = ts
+        local_sync_state["detectedAt"] = ts
+        if not pending_items:
+            local_sync_state["status"] = "idle"
+            local_sync_state["detail"] = "No pending local records waiting for Firebase."
+            return {"ok": True, "flushed": 0, "remaining": 0}
+    network = get_network_status()
+    if not network.get("online"):
+        with local_data_lock:
+            local_sync_state["status"] = "offline"
+            local_sync_state["detail"] = "Internet is offline. Pending records remain stored locally."
+            local_sync_state["lastError"] = network.get("detail")
+            local_sync_state["detectedAt"] = ts
+        return {"ok": True, "flushed": 0, "remaining": len(pending_items), "offline": True}
+
+    flushed = 0
+    synced_at = now_ms()
+    with local_data_lock:
+        pending_payload = _load_pending_sync_payload()
+        remaining = []
+        for item in list(pending_payload.get("items") or []):
+            try:
+                if str(item.get("type")) == "profile":
+                    _sync_profile_to_firebase(item.get("payload") or {})
+                    _mark_local_profile_synced_locked(item.get("user_id"), synced_at=synced_at)
+                elif str(item.get("type")) == "measurement":
+                    _sync_measurement_to_firebase(item.get("payload") or {})
+                    _mark_local_measurement_synced_locked(item.get("user_id"), item.get("record_id"), synced_at=synced_at)
+                else:
+                    continue
+                flushed += 1
+            except Exception as e:
+                item["lastAttemptAt"] = now_ms()
+                item["lastError"] = str(e)
+                item["retryCount"] = int(item.get("retryCount") or 0) + 1
+                item["updatedAt"] = now_ms()
+                remaining.append(item)
+        pending_payload["items"] = remaining
+        _save_pending_sync_payload(pending_payload)
+        local_sync_state["pendingCount"] = len(remaining)
+        local_sync_state["lastAttemptAt"] = ts
+        local_sync_state["detectedAt"] = now_ms()
+        if remaining:
+            local_sync_state["status"] = "warning"
+            local_sync_state["detail"] = f"Synced {flushed} record(s); {len(remaining)} still pending."
+            local_sync_state["lastError"] = remaining[-1].get("lastError")
+        else:
+            local_sync_state["status"] = "ok"
+            local_sync_state["detail"] = f"Synced {flushed} local record(s) to Firebase."
+            local_sync_state["lastSuccessAt"] = now_ms()
+            local_sync_state["lastError"] = None
+        return {"ok": True, "flushed": flushed, "remaining": len(remaining)}
+
+
+def local_data_sync_loop():
+    sleep_seconds = max(5.0, LOCAL_SYNC_INTERVAL_MS / 1000.0)
+    backoff_seconds = max(sleep_seconds, LOCAL_SYNC_BACKOFF_MS / 1000.0)
+    while True:
+        try:
+            result = run_local_data_sync_once()
+            time.sleep(backoff_seconds if result.get("remaining") and result.get("offline") else sleep_seconds)
+        except Exception as e:
+            with local_data_lock:
+                local_sync_state["status"] = "warning"
+                local_sync_state["detail"] = f"Local sync loop error: {e}"
+                local_sync_state["lastError"] = str(e)
+                local_sync_state["detectedAt"] = now_ms()
+            print(f"Local data sync loop error: {e}")
+            time.sleep(backoff_seconds)
+
+
 system_load_samples = deque(maxlen=72)
 system_alerts = deque(maxlen=40)
 startup_lock = threading.Lock()
@@ -778,7 +1177,8 @@ def _firebase_request(method, path, payload):
         headers={"Content-Type": "application/json"},
         method=method,
     )
-    with urllib.request.urlopen(req, timeout=5) as resp:
+    timeout_seconds = max(0.5, FIREBASE_SYNC_REQUEST_TIMEOUT_MS / 1000.0)
+    with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
         raw = resp.read().decode("utf-8", errors="ignore").strip()
         if not raw:
             return None
@@ -979,6 +1379,15 @@ def sync_system_status_to_firebase(force_history=False):
 
     snapshot = build_system_status()
     ts = now_ms()
+    network_component = (snapshot.get("components") or {}).get("wifi") or {}
+    if FIREBASE_SYNC_SKIP_WHEN_OFFLINE and not bool(network_component.get("online")):
+        with data_lock:
+            firebase_sync_state["lastAttemptAt"] = ts
+            firebase_sync_state["status"] = "offline"
+            firebase_sync_state["detail"] = "Internet is offline; Firebase sync skipped so local kiosk and sensors can continue."
+            firebase_sync_state["detectedAt"] = ts
+        return False
+
     history_signature = _monitor_signature(snapshot)
 
     with data_lock:
@@ -1035,11 +1444,25 @@ def sync_system_status_to_firebase(force_history=False):
 
 def firebase_sync_loop():
     sleep_seconds = max(5, FIREBASE_SYNC_INTERVAL_MS / 1000.0)
+    backoff_seconds = 0.0
     while True:
+        if backoff_seconds > 0:
+            time.sleep(backoff_seconds)
         try:
-            sync_system_status_to_firebase(force_history=False)
+            synced = sync_system_status_to_firebase(force_history=False)
+            if synced:
+                backoff_seconds = 0.0
+            else:
+                backoff_seconds = min(
+                    max(FIREBASE_SYNC_BACKOFF_MIN_MS / 1000.0, backoff_seconds * 2 if backoff_seconds else 0),
+                    FIREBASE_SYNC_BACKOFF_MAX_MS / 1000.0,
+                )
         except Exception as e:
             print(f"Firebase monitoring sync loop error: {e}")
+            backoff_seconds = min(
+                max(FIREBASE_SYNC_BACKOFF_MIN_MS / 1000.0, backoff_seconds * 2 if backoff_seconds else 0),
+                FIREBASE_SYNC_BACKOFF_MAX_MS / 1000.0,
+            )
         time.sleep(sleep_seconds)
 
 
@@ -1146,6 +1569,14 @@ def build_system_status():
             lastSuccessAt=firebase_state.get("lastSuccessAt"),
             lastAttemptAt=firebase_state.get("lastAttemptAt"),
         ),
+        "localDataSync": build_component(
+            local_sync_state.get("status") or "idle",
+            local_sync_state.get("detail") or "Local sync state is idle.",
+            detected_at=local_sync_state.get("detectedAt"),
+            lastSuccessAt=local_sync_state.get("lastSuccessAt"),
+            lastAttemptAt=local_sync_state.get("lastAttemptAt"),
+            pendingCount=int(local_sync_state.get("pendingCount") or 0),
+        ),
     }
 
     override_components = overrides.get("components") or {}
@@ -1202,7 +1633,6 @@ def _serial_port_candidates():
 
     if list_ports is not None:
         preferred = []
-        fallback = []
         for port in list_ports.comports():
             device = str(getattr(port, "device", "") or "").strip()
             if not device:
@@ -1215,9 +1645,9 @@ def _serial_port_candidates():
             ]).lower()
             if any(token in descriptor for token in ("arduino", "ch340", "cp210", "usb serial", "usb-serial")):
                 preferred.append(device)
-            else:
-                fallback.append(device)
-        for device in preferred + fallback:
+            elif SERIAL_INCLUDE_UNDESCRIBED_PORTS:
+                preferred.append(device)
+        for device in preferred:
             add_candidate(device)
 
     return candidates
@@ -2346,7 +2776,7 @@ def read_serial_data():
             if ser is None or not ser.is_open:
                 open_serial()
                 if ser is None:
-                    time.sleep(1)
+                    time.sleep(max(1.0, SERIAL_RECONNECT_INTERVAL_MS / 1000.0))
                     continue
 
             raw_line = ser.readline()
@@ -2720,16 +3150,16 @@ def local_user_get(user_id):
         return jsonify({"ok": False, "error": "user_id is required"}), 400
 
     with local_data_lock:
-        payload = _load_local_data_payload()
-        record = (payload.get("users") or {}).get(uid)
-        if not isinstance(record, dict):
+        users_payload = _load_local_users_payload()
+        measurements_payload = _load_local_measurements_payload()
+        profile = (users_payload.get("users") or {}).get(uid)
+        if not isinstance(profile, dict):
             return jsonify({"ok": True, "user": None, "measurements": []})
 
-        profile = record.get("profile") if isinstance(record.get("profile"), dict) else {}
         measurements = [
             item for item in (
                 _normalize_local_measurement_entry(entry)
-                for entry in (record.get("measurements") or [])
+                for entry in ((measurements_payload.get("measurements") or {}).get(uid) or [])
             )
             if item is not None
         ]
@@ -2742,6 +3172,8 @@ def local_user_get(user_id):
             "sex": profile.get("sex") or "",
             "password": profile.get("password") or "12345",
             "mustResetPassword": bool(profile.get("mustResetPassword", True)),
+            "sync_status": profile.get("sync_status") or "pending",
+            "syncedAt": profile.get("syncedAt"),
         }
         return jsonify({"ok": True, "user": user_payload, "measurements": measurements})
 
@@ -2751,22 +3183,23 @@ def local_user_put(user_id):
     uid = str(user_id).strip()
     if not uid:
         return jsonify({"ok": False, "error": "user_id is required"}), 400
+    if _is_guest_user_id(uid):
+        return jsonify({"ok": False, "error": "Guest users must not be saved."}), 400
 
     payload_in = request.get_json(silent=True) or {}
     with local_data_lock:
-        payload = _load_local_data_payload()
-        record = _ensure_local_user_record(payload, uid)
-        record["profile"] = {
-            "id": uid,
-            "name": payload_in.get("name") or payload_in.get("fullName") or "",
-            "fullName": payload_in.get("name") or payload_in.get("fullName") or "",
-            "age": payload_in.get("age"),
-            "sex": payload_in.get("sex") or "",
-            "password": payload_in.get("password") or "12345",
-            "mustResetPassword": bool(payload_in.get("mustResetPassword", True)),
-        }
-        _save_local_data_payload(payload)
-        return jsonify({"ok": True, "user": record["profile"]})
+        users_payload = _load_local_users_payload()
+        measurements_payload = _load_local_measurements_payload()
+        profile = _normalize_local_profile_entry(uid, payload_in)
+        if profile is None:
+            return jsonify({"ok": False, "error": "Invalid profile payload"}), 400
+        profile["sync_status"] = "pending"
+        users_payload.setdefault("users", {})[uid] = profile
+        measurements_payload.setdefault("measurements", {}).setdefault(uid, [])
+        _save_local_users_payload(users_payload)
+        _save_local_measurements_payload(measurements_payload)
+        _queue_pending_sync_locked("profile", uid, uid, profile)
+        return jsonify({"ok": True, "queued": True, "user": profile})
 
 
 @app.delete("/local/users/<user_id>")
@@ -2776,11 +3209,22 @@ def local_user_delete(user_id):
         return jsonify({"ok": False, "error": "user_id is required"}), 400
 
     with local_data_lock:
-        payload = _load_local_data_payload()
-        existed = uid in (payload.get("users") or {})
-        if existed:
-            del payload["users"][uid]
-            _save_local_data_payload(payload)
+        users_payload = _load_local_users_payload()
+        measurements_payload = _load_local_measurements_payload()
+        pending_payload = _load_pending_sync_payload()
+        existed = uid in (users_payload.get("users") or {}) or uid in (measurements_payload.get("measurements") or {})
+        if uid in (users_payload.get("users") or {}):
+            del users_payload["users"][uid]
+        if uid in (measurements_payload.get("measurements") or {}):
+            del measurements_payload["measurements"][uid]
+        pending_payload["items"] = [
+            item for item in (pending_payload.get("items") or [])
+            if str(item.get("user_id") or "") != uid
+        ]
+        _save_local_users_payload(users_payload)
+        _save_local_measurements_payload(measurements_payload)
+        _save_pending_sync_payload(pending_payload)
+        local_sync_state["pendingCount"] = len(pending_payload["items"])
         return jsonify({"ok": True, "deleted": existed, "userId": uid})
 
 
@@ -2789,29 +3233,49 @@ def local_measurement_post(user_id):
     uid = str(user_id).strip()
     if not uid:
         return jsonify({"ok": False, "error": "user_id is required"}), 400
+    if _is_guest_user_id(uid):
+        return jsonify({"ok": False, "error": "Guest users must not be saved."}), 400
 
     payload_in = request.get_json(silent=True) or {}
-    entry = _normalize_local_measurement_entry(payload_in)
+    profile = payload_in.get("profile") if isinstance(payload_in.get("profile"), dict) else {}
+    enriched_payload = {
+        **payload_in,
+        "user_id": uid,
+        "userId": uid,
+        "name": payload_in.get("name") or profile.get("name") or profile.get("fullName") or "",
+        "age": payload_in.get("age", profile.get("age")),
+        "sex": payload_in.get("sex") or profile.get("sex") or "",
+        "sync_status": "pending",
+    }
+    entry = _normalize_local_measurement_entry(enriched_payload)
     if entry is None:
         return jsonify({"ok": False, "error": "Invalid measurement payload"}), 400
 
     with local_data_lock:
-        payload = _load_local_data_payload()
-        record = _ensure_local_user_record(payload, uid)
+        users_payload = _load_local_users_payload()
+        measurements_payload = _load_local_measurements_payload()
+        profile_entry = (users_payload.get("users") or {}).get(uid)
+        if not isinstance(profile_entry, dict):
+            return jsonify({"ok": False, "error": "Registered user profile is required before saving measurements."}), 400
+        measurements_payload.setdefault("measurements", {})
         measurements = [
             item for item in (
                 _normalize_local_measurement_entry(existing)
-                for existing in record.get("measurements", [])
+                for existing in ((measurements_payload.get("measurements") or {}).get(uid) or [])
             )
             if item is not None
         ]
         if entry["id"]:
             measurements = [item for item in measurements if item.get("id") != entry["id"]]
+        entry["name"] = profile_entry.get("name") or entry.get("name") or ""
+        entry["age"] = profile_entry.get("age")
+        entry["sex"] = profile_entry.get("sex") or ""
         measurements.append(entry)
         measurements.sort(key=lambda item: int(item.get("capturedAt") or 0))
-        record["measurements"] = measurements
-        _save_local_data_payload(payload)
-        return jsonify({"ok": True, "measurement": entry})
+        measurements_payload["measurements"][uid] = measurements
+        _save_local_measurements_payload(measurements_payload)
+        _queue_pending_sync_locked("measurement", uid, entry["id"], entry)
+        return jsonify({"ok": True, "queued": True, "measurement": entry})
 
 
 @app.get("/local/users/<user_id>/measurements")
@@ -2826,12 +3290,11 @@ def local_measurements_get(user_id):
         limit = 8
 
     with local_data_lock:
-        payload = _load_local_data_payload()
-        record = (payload.get("users") or {}).get(uid) or {}
+        payload = _load_local_measurements_payload()
         measurements = [
             item for item in (
                 _normalize_local_measurement_entry(existing)
-                for existing in (record.get("measurements") or [])
+                for existing in ((payload.get("measurements") or {}).get(uid) or [])
             )
             if item is not None
         ]
@@ -2846,18 +3309,114 @@ def local_measurements_latest(user_id):
         return jsonify({"ok": False, "error": "user_id is required"}), 400
 
     with local_data_lock:
-        payload = _load_local_data_payload()
-        record = (payload.get("users") or {}).get(uid) or {}
+        payload = _load_local_measurements_payload()
         measurements = [
             item for item in (
                 _normalize_local_measurement_entry(existing)
-                for existing in (record.get("measurements") or [])
+                for existing in ((payload.get("measurements") or {}).get(uid) or [])
             )
             if item is not None
         ]
         measurements.sort(key=lambda item: int(item.get("capturedAt") or 0))
         latest = measurements[-1] if measurements else None
         return jsonify({"ok": True, "measurement": latest})
+
+
+@app.get("/local/sync/status")
+def local_sync_status():
+    with local_data_lock:
+        pending_payload = _load_pending_sync_payload()
+        users_payload = _load_local_users_payload()
+        measurements_payload = _load_local_measurements_payload()
+        items = list(pending_payload.get("items") or [])
+        return jsonify({
+            "ok": True,
+            "status": dict(local_sync_state),
+            "pending": items,
+            "pendingCount": len(items),
+            "registeredUsers": len((users_payload.get("users") or {})),
+            "measurementBuckets": len((measurements_payload.get("measurements") or {})),
+        })
+
+
+@app.get("/local/analytics/summary")
+def local_analytics_summary():
+    with local_data_lock:
+        users_payload = _load_local_users_payload()
+        measurements_payload = _load_local_measurements_payload()
+        users = users_payload.get("users") or {}
+        measurement_buckets = measurements_payload.get("measurements") or {}
+
+        category_distribution = {
+            "Underweight": 0,
+            "Normal": 0,
+            "Overweight": 0,
+            "Obese": 0,
+        }
+        sex_distribution = {}
+        age_distribution = {
+            "child": 0,
+            "adult": 0,
+            "unknown": 0,
+        }
+        total_bmi = 0.0
+        bmi_count = 0
+        total_measurements = 0
+        total_users = 0
+
+        for user_id, profile in users.items():
+            if _is_guest_user_id(user_id) or not isinstance(profile, dict):
+                continue
+            total_users += 1
+            sex_label = str(profile.get("sex") or "").strip() or "Unknown"
+            sex_distribution[sex_label] = int(sex_distribution.get(sex_label) or 0) + 1
+            try:
+                age_value = int(profile.get("age"))
+                age_distribution["child" if age_value < 20 else "adult"] += 1
+            except Exception:
+                age_distribution["unknown"] += 1
+
+        for user_id, entries in measurement_buckets.items():
+            if _is_guest_user_id(user_id) or not isinstance(entries, list):
+                continue
+            for raw_entry in entries:
+                entry = _normalize_local_measurement_entry(raw_entry)
+                if entry is None:
+                    continue
+                total_measurements += 1
+                category = _normalize_bmi_category(entry.get("category"))
+                if category in category_distribution:
+                    category_distribution[category] += 1
+                try:
+                    bmi_value = float(entry.get("bmi"))
+                    if math.isfinite(bmi_value):
+                        total_bmi += bmi_value
+                        bmi_count += 1
+                except Exception:
+                    pass
+
+        average_bmi = round(total_bmi / bmi_count, 2) if bmi_count > 0 else None
+        return jsonify({
+            "ok": True,
+            "mode": "offline_local",
+            "message": "Offline mode: showing local analytics data.",
+            "totalUsers": total_users,
+            "totalMeasurements": total_measurements,
+            "averageBmi": average_bmi,
+            "bmiCategoryDistribution": category_distribution,
+            "sexDistribution": sex_distribution,
+            "ageDistribution": age_distribution,
+        })
+
+
+@app.post("/local/sync/flush")
+def local_sync_flush():
+    result = run_local_data_sync_once()
+    return jsonify({
+        "ok": True,
+        **result,
+        "status": dict(local_sync_state),
+    })
 
 
 @app.get("/debug/serial")
@@ -3347,11 +3906,13 @@ def start_reader_once():
         if startup_complete:
             return
         if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
+            _migrate_legacy_local_data_if_needed()
             _load_weight_calibration_state()
             _load_height_calibration_state()
             load_face_db()
             threading.Thread(target=read_serial_data, daemon=True).start()
             threading.Thread(target=firebase_sync_loop, daemon=True).start()
+            threading.Thread(target=local_data_sync_loop, daemon=True).start()
             startup_complete = True
 
 

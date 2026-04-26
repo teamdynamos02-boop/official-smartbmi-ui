@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "serve:prod": "serve -s dist -l 4173"
+    "serve:prod": "serve -s dist -l 4173",
+    "screenshot": "./screenshot.sh",
+    "screenshot:all": "./screenshot.sh all"
   },
   "dependencies": {
     "@esbuild/linux-arm64": "^0.27.7",

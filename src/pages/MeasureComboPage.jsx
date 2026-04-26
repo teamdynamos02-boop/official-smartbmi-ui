@@ -1,5 +1,4 @@
 import { Ruler, ScanLine, Scale, Weight } from "lucide-react";
-import { motion } from "framer-motion";
 
 function buildInstruction(isWeight) {
   return isWeight
@@ -56,18 +55,19 @@ function MeasureComboTile({
   const displayDigits = isWeight
     ? String(value ?? "--.- kg").replace(/\s*kg\s*$/i, "")
     : String(value ?? "--");
+  const liveLabel = isWeight ? "Weight Live" : "Height Live";
   const centerInstruction = buildInstruction(isWeight);
 
   return (
     <div className="panel measure-panel measure-combo-panel">
       {!isDone && !isError && (
         <div className="measure-guidance-wrap">
-          <div className="measure-top-instruction" role="note" aria-live="polite">
-            <strong>{centerInstruction.title}</strong>
+          <div className="measure-top-instruction" role="note" aria-live="polite" style={{ minHeight: 54, padding: "10px 18px" }}>
+            <strong style={{ fontSize: "28px", fontWeight: 700, lineHeight: 1.1 }}>{centerInstruction.title}</strong>
           </div>
           <div className="measure-guidance-strip" aria-label={`${isWeight ? "Weight" : "Height"} guidance`}>
             {centerInstruction.steps.map((step, index) => (
-              <div key={step} className="measure-guidance-card">
+              <div key={step} className="measure-guidance-card" style={{ fontSize: "16px", padding: "10px 16px", minHeight: 72 }}>
                 <b>{index + 1}</b>
                 <span>{step}</span>
               </div>
@@ -76,11 +76,11 @@ function MeasureComboTile({
         </div>
       )}
       <div className="measure-head">
-        <h2 className="measure-title">{icon}{isWeight ? "Weight Measurement" : "Height Measurement"}</h2>
-        <span className={`measure-chip instruction-pill ${instructionClass}`}>{instructionLabel}</span>
+        <h2 className="measure-title" style={{ fontSize: "30px", lineHeight: 1.15 }}>{icon}{isWeight ? "Weight Measurement" : "Height Measurement"}</h2>
+        <span className={`measure-chip instruction-pill ${instructionClass}`} style={{ fontSize: "16px", padding: "10px 16px" }}>{instructionLabel}</span>
       </div>
       {!isError && (
-        <p className={`measure-status ${isDone ? "message-ok" : "message-warning"}`}>{status}</p>
+        <p className={`measure-status ${isDone ? "message-ok" : "message-warning"}`} style={{ fontSize: "18px", lineHeight: 1.4 }}>{status}</p>
       )}
       {!isError && !isDone && !!alertMessage && (
         <div className="measure-alert-popup" role="status" aria-live="assertive">
@@ -95,24 +95,31 @@ function MeasureComboTile({
         </div>
       )}
 
-      <div className={`measure-visual-stage ${isWeight ? "visual-weight" : "visual-height"}`}>
+      <div
+        className={`measure-visual-stage ${isWeight ? "visual-weight" : "visual-height"}`}
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          height: "220px",
+          overflow: "visible",
+          marginBottom: "12px",
+        }}
+      >
         {isWeight ? (
-          <div className="weight-visual">
-            <div className="weight-scale">
+          <div className="weight-visual" style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", width: "100%", height: "100%" }}>
+            <div className="weight-scale" style={{ width: "360px", maxWidth: "100%", height: "180px", maxHeight: "180px", overflow: "visible" }}>
               <div className="weight-display">
                 <span className="weight-display-label">KG</span>
-                <motion.span
+                <span
                   className="weight-display-digits"
-                  animate={lightMotion ? undefined : { opacity: [0.7, 1, 0.7] }}
-                  transition={lightMotion ? undefined : { duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+                  style={{ maxHeight: "180px", width: "auto", objectFit: "contain" }}
                 >
                   {displayDigits}
-                </motion.span>
+                </span>
               </div>
-              <motion.div
+              <div
                 className="weight-scan-line"
-                animate={lightMotion ? undefined : { x: [-48, 48] }}
-                transition={lightMotion ? undefined : { duration: 1.7, repeat: Infinity, repeatType: "reverse", ease: "easeInOut" }}
               />
               <div className="weight-pad" />
               <div className="weight-feet" aria-hidden="true">
@@ -122,15 +129,13 @@ function MeasureComboTile({
                 <i />
               </div>
             </div>
-            <div className="weight-shadow" />
+            <div className="weight-shadow" style={{ width: "180px", marginTop: "10px" }} />
           </div>
         ) : (
-          <div className="height-visual">
-            <div className="height-ruler" />
-            <motion.div
+          <div className="height-visual" style={{ display: "flex", justifyContent: "center", alignItems: "center", width: "240px", maxWidth: "100%", height: "180px", overflow: "visible" }}>
+            <div className="height-ruler" style={{ maxHeight: "180px", width: "auto", objectFit: "contain" }} />
+            <div
               className="height-scan-beam"
-              animate={lightMotion ? undefined : { y: [-68, 68] }}
-              transition={lightMotion ? undefined : { duration: 1.8, repeat: Infinity, repeatType: "reverse", ease: "easeInOut" }}
             />
             <div className="height-ticks" aria-hidden="true">
               {Array.from({ length: 6 }).map((_, i) => <span key={i} />)}
@@ -139,17 +144,14 @@ function MeasureComboTile({
         )}
       </div>
 
-      <div className={`meter-wrap measure-meter ${isWeight ? "measure-meter-weight" : "measure-meter-height"}`}>
+      <div className={`meter-wrap measure-meter ${isWeight ? "measure-meter-weight" : "measure-meter-height"}`} style={{ marginTop: 0 }}>
         <div className="measure-metric">
-          <span className="meter-label">{isWeight ? "Weight" : "Height"}</span>
+          <span className="meter-label" style={{ fontSize: "22px" }}>{liveLabel}</span>
           <span className="measure-sub">Auto</span>
         </div>
-        <motion.strong
-          animate={lightMotion ? undefined : { scale: [1, 1.02, 1] }}
-          transition={lightMotion ? undefined : { duration: 1.3, repeat: Infinity, ease: "easeInOut" }}
-        >
+        <strong style={{ fontSize: "56px", lineHeight: 1 }}>
           {value}
-        </motion.strong>
+        </strong>
       </div>
       <div className="measure-signal">
         <span><ScanLine /> Signal</span>

@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Activity, Heart, Scale } from "lucide-react";
 import IntroPage from "./pages/IntroPage";
 import RemindersPage from "./pages/RemindersPage";
 import TermsPage from "./pages/TermsPage";
 import FullNamePage from "./pages/FullNamePage";
+import InputPage from "./pages/InputPage";
 import AgePage from "./pages/AgePage";
 import SexPage from "./pages/SexPage";
 import CameraPage from "./pages/CameraPage";
@@ -19,6 +19,11 @@ import { captureFrame, checkLiveness, checkPoseMetrics, checkRestrictions, delet
 import AdminPage from "./pages/AdminPage";
 import { collectAndSyncSystemMonitor } from "./services/systemMonitor";
 import { computeBmiAssessment } from "./services/bmi";
+import {
+  setCurrentInstruction,
+  speak as speakVoice,
+  stop as stopVoice,
+} from "./services/voice";
 
 function randomUser() {
   return {
@@ -60,6 +65,7 @@ const PREVIEW_SCREENS = new Set([
   "terms",
   "reminders",
   "full-name",
+  "input",
   "age",
   "sex",
   "registration",
@@ -77,7 +83,29 @@ function getPreviewScreen(queryParams) {
   return PREVIEW_SCREENS.has(requested) ? requested : "welcome";
 }
 
-function buildPreviewUser() {
+function getInitialScreen(queryParams, isPreviewMode) {
+  if (isPreviewMode) return getPreviewScreen(queryParams);
+  if (queryParams.get("start") === "1") return "reminders";
+  return "welcome";
+}
+
+function buildPreviewUser(isGuestPreview = false) {
+  if (isGuestPreview) {
+    return {
+      id: "guest-preview",
+      name: "Guest",
+      age: 20,
+      sex: "Female",
+      password: "",
+      mustResetPassword: false,
+      isGuest: true,
+      weightKg: 53.7,
+      heightCm: 158,
+      bmi: 21.5,
+      category: "Normal",
+    };
+  }
+
   return {
     id: "48291",
     name: "Juan Dela Cruz",
@@ -117,6 +145,7 @@ export default function App() {
   const queryParams = useMemo(() => new URLSearchParams(window.location.search), []);
   const isAdminView = queryParams.get("view") === "admin" || queryParams.get("admin") === "1";
   const isPreviewMode = queryParams.get("preview") === "1";
+  const previewGuest = queryParams.get("guest") === "1" || String(queryParams.get("variant") || "").toLowerCase() === "guest";
   const previewScreen = getPreviewScreen(queryParams);
   const previewCameraTone = String(queryParams.get("cameraTone") || queryParams.get("tone") || "info").toLowerCase();
   const previewCameraPose = String(queryParams.get("pose") || "Center");
@@ -131,7 +160,8 @@ export default function App() {
   const WEIGHT_MEASURE_MAX_TOTAL_MS = Number(import.meta.env.VITE_WEIGHT_MEASURE_MAX_TOTAL_MS ?? 4500);
   const HEIGHT_MEASURE_MAX_TOTAL_MS = Number(import.meta.env.VITE_HEIGHT_MEASURE_MAX_TOTAL_MS ?? 5500);
   const MAX_SENSOR_RETRIES = 5;
-  const SYSTEM_MONITOR_POLL_MS = Number(import.meta.env.VITE_SYSTEM_MONITOR_POLL_MS ?? 15000);
+  const SYSTEM_MONITOR_POLL_MS = Number(import.meta.env.VITE_SYSTEM_MONITOR_POLL_MS ?? 30000);
+  const WELCOME_AUTO_START_MS = Number(import.meta.env.VITE_WELCOME_AUTO_START_MS ?? 8000);
   const BASIC_FACE_FLOW = String(import.meta.env.VITE_BASIC_FACE_FLOW ?? "true").toLowerCase() === "true";
   const CAMERA_LOOP_MIN_INTERVAL_MS = 320;
   const CAMERA_CHECK_RESTRICTIONS_EVERY = 3;
@@ -153,17 +183,25 @@ export default function App() {
   const FACE_IDENTIFY_STRONG_MATCH_MAX_DISTANCE = Number(import.meta.env.VITE_FACE_IDENTIFY_STRONG_MATCH_MAX_DISTANCE ?? 0.4);
   const FACE_IDENTIFY_SINGLE_USER_MAX_DISTANCE = Number(import.meta.env.VITE_FACE_IDENTIFY_SINGLE_USER_MAX_DISTANCE ?? 0.32);
   const REGISTRATION_POSES = buildRegistrationPoses(REGISTRATION_POSE_COUNT);
-  const [screen, setScreen] = useState(() => (isPreviewMode ? previewScreen : "welcome"));
+  const [screen, setScreen] = useState(() => getInitialScreen(queryParams, isPreviewMode));
   const [agreeTerms, setAgreeTerms] = useState(() => isPreviewMode);
-  const [user, setUser] = useState(() => (isPreviewMode ? buildPreviewUser() : randomUser()));
+  const [user, setUser] = useState(() => (isPreviewMode ? buildPreviewUser(previewGuest) : randomUser()));
   const [newUserForm, setNewUserForm] = useState(() => (isPreviewMode
-    ? {
-        firstName: "Juan",
-        middleInitial: "P",
-        lastName: "Dela Cruz",
-        age: "23",
-        sex: "Male",
-      }
+    ? (previewGuest
+        ? {
+            firstName: "",
+            middleInitial: "",
+            lastName: "",
+            age: "20",
+            sex: "Female",
+          }
+        : {
+            firstName: "Juan",
+            middleInitial: "P",
+            lastName: "Dela Cruz",
+            age: "23",
+            sex: "Male",
+          })
     : newUserFormDefaults()));
   const [cameraMessage, setCameraMessage] = useState(() => {
     if (!isPreviewMode) return "Align your face in the camera.";
@@ -225,6 +263,9 @@ export default function App() {
   const enrollmentFinalizedRef = useRef(false);
   const savedResultKeyRef = useRef("");
   const guestRegistrationSnapshotRef = useRef(null);
+  const lastRegistrationPoseRef = useRef("");
+  const KIOSK_BLOCK_SHORTCUTS = String(import.meta.env.VITE_KIOSK_BLOCK_SHORTCUTS ?? "true").toLowerCase() === "true";
+  const KIOSK_DISABLE_CONTEXT_MENU = String(import.meta.env.VITE_KIOSK_DISABLE_CONTEXT_MENU ?? "true").toLowerCase() === "true";
 
   const clearTimers = () => {
     autoTimersRef.current.forEach((id) => {
@@ -237,6 +278,13 @@ export default function App() {
     const id = setTimeout(fn, ms);
     autoTimersRef.current.push(id);
   };
+
+  const announceVoice = useCallback((text, options = {}) => {
+    const normalized = String(text || "").trim();
+    if (!normalized) return false;
+    setCurrentInstruction(normalized);
+    return speakVoice(normalized, options);
+  }, []);
 
   const showMeasureAlert = (kind, title, message) => {
     if (kind === "weight") {
@@ -309,6 +357,8 @@ export default function App() {
       seconds -= 1;
       if (seconds <= 0) {
         clearInterval(intervalId);
+        if (kind === "Weight") console.log('[UI] Weight complete -> Height');
+        else if (kind === "Height") console.log('[UI] Height complete -> Face');
         setScreen(nextScreen);
         return;
       }
@@ -638,7 +688,7 @@ export default function App() {
 
   const handleBackToMenuFromMeasure = () => {
     void discardIncompleteEnrollment();
-    setScreen("welcome");
+    reset();
   };
 
   const continueAsGuest = () => {
@@ -656,7 +706,7 @@ export default function App() {
     setCameraPopup(null);
     setCameraCanRetry(false);
     setCameraReturnMessage("");
-    setScreen("age");
+    setScreen("input");
   };
 
   const retryCameraFlow = () => {
@@ -672,10 +722,14 @@ export default function App() {
   };
 
   const reset = () => {
+    if (user.isGuest) console.log('[UI] Guest result Finish clicked');
     clearTimers();
     weightRequestAbortRef.current?.abort();
     heightRequestAbortRef.current?.abort();
     cameraRequestAbortRef.current?.abort();
+    stopVoice();
+    void resetSensorSession("weight").catch(() => {});
+    void resetSensorSession("height").catch(() => {});
     weightRequestAbortRef.current = null;
     heightRequestAbortRef.current = null;
     cameraRequestAbortRef.current = null;
@@ -715,6 +769,13 @@ export default function App() {
     setFooterHint("Touchscreen enabled");
   };
 
+  const cancelAndReset = useCallback(() => {
+    console.log('[UI] Cancel/reset clicked');
+    announceVoice("Transaction cancelled. Returning to home.", { force: true, cooldownMs: 0 });
+    void discardIncompleteEnrollment();
+    reset();
+  }, [announceVoice]);
+
   useEffect(() => () => {
     clearTimers();
     weightRequestAbortRef.current?.abort();
@@ -724,6 +785,47 @@ export default function App() {
 
   useEffect(() => {
     if (isPreviewMode) return;
+    if (queryParams.get("start") !== "1") return;
+    const nextUrl = `${window.location.pathname}${window.location.hash || ""}`;
+    window.history.replaceState({}, "", nextUrl);
+  }, [isPreviewMode, queryParams]);
+
+  useEffect(() => {
+    if (!KIOSK_DISABLE_CONTEXT_MENU && !KIOSK_BLOCK_SHORTCUTS) return undefined;
+
+    const preventContextMenu = (event) => {
+      if (KIOSK_DISABLE_CONTEXT_MENU) event.preventDefault();
+    };
+    const preventShortcuts = (event) => {
+      if (!KIOSK_BLOCK_SHORTCUTS) return;
+      const key = String(event.key || "").toLowerCase();
+      const blocked = (
+        key === "escape"
+        || key === "f11"
+        || (event.ctrlKey && ["w", "r", "n", "t", "l", "u"].includes(key))
+        || (event.ctrlKey && event.shiftKey && ["i", "j", "c"].includes(key))
+        || key === "browserback"
+      );
+      if (!blocked) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+
+    window.addEventListener("contextmenu", preventContextMenu, { capture: true });
+    window.addEventListener("keydown", preventShortcuts, { capture: true });
+    return () => {
+      window.removeEventListener("contextmenu", preventContextMenu, { capture: true });
+      window.removeEventListener("keydown", preventShortcuts, { capture: true });
+    };
+  }, [KIOSK_BLOCK_SHORTCUTS, KIOSK_DISABLE_CONTEXT_MENU]);
+
+  useEffect(() => {
+    stopVoice();
+  }, [screen]);
+
+  useEffect(() => {
+    if (isPreviewMode) return;
+    if (screen === "welcome") return undefined;
     if (isAdminView) return undefined;
 
     let mounted = true;
@@ -772,7 +874,7 @@ export default function App() {
       clearInterval(intervalId);
       controller.abort();
     };
-  }, [isAdminView, isPreviewMode, SYSTEM_MONITOR_POLL_MS]);
+  }, [isAdminView, isPreviewMode, screen, SYSTEM_MONITOR_POLL_MS]);
 
   useEffect(() => {
     if (isPreviewMode) {
@@ -785,10 +887,234 @@ export default function App() {
     if (screen === "identification") setFooterHint("Identifying face");
     if (screen === "identity-confirm") setFooterHint("Confirm profile");
     if (screen === "full-name") setFooterHint("Enter name");
+    if (screen === "input") setFooterHint("Enter guest info");
     if (screen === "age") setFooterHint("Enter age");
     if (screen === "sex") setFooterHint("Choose profile");
     if (screen === "analytics") setFooterHint("Health advice");
   }, [screen, isPreviewMode]);
+
+  useEffect(() => {
+    const loadMessages = {
+      reminders: "Please remove your shoes and heavy items. Stand on the platform when ready.",
+      terms: "Please review the terms and conditions before continuing.",
+      "full-name": "Please enter your full name.",
+      input: "Please enter your age and select your sex.",
+      age: "Please enter your age.",
+      sex: "Please select your sex.",
+      registration: "Face registration will now start. Please look at the camera.",
+      identification: "Please look at the camera.",
+      "identity-confirm": "Please confirm if this is your profile.",
+      weight: "Please step on the platform and stand still.",
+      height: "Please stand straight and face forward.",
+      saving: "Please wait while your result is being saved.",
+      result: "Your BMI result is now ready. You may view your result and scan the QR code.",
+      analytics: "Your health analytics are now available.",
+    };
+
+    const text = loadMessages[screen];
+    if (!text) return;
+    announceVoice(text, {
+      key: `screen-${screen}`,
+      cooldownMs: 0,
+      force: true,
+    });
+  }, [announceVoice, screen]);
+
+  useEffect(() => {
+    if (screen !== "weight") return;
+
+    let prompt = "";
+    let key = "";
+    let force = false;
+
+    const statusText = String(weightStatus || "").toLowerCase();
+    const alertText = String(weightAlertMessage || "").toLowerCase();
+    const labelText = String(weightStatusLabel || "").toLowerCase();
+
+    if (weightStatusType === "done") {
+      prompt = "Weight measurement complete.";
+      key = "weight-complete";
+      force = true;
+    } else if (
+      alertText.includes("movement")
+      || alertText.includes("remain still")
+      || labelText.includes("hold still")
+      || statusText.includes("waiting for stable")
+    ) {
+      prompt = "Please stay still. Measuring your weight.";
+      key = "weight-still";
+    } else if (
+      alertText.includes("both feet")
+      || statusText.includes("stand centered")
+      || statusText.includes("do not shift your feet")
+    ) {
+      prompt = "Please avoid moving. Keep both feet steady.";
+      key = "weight-feet-steady";
+    } else if (
+      statusText.includes("step onto")
+      || alertText.includes("step onto")
+      || alertText.includes("no live reading")
+    ) {
+      prompt = "Please step back on the platform.";
+      key = "weight-step-on";
+    }
+
+    if (!prompt) return;
+    announceVoice(prompt, {
+      key,
+      cooldownMs: force ? 0 : 4500,
+      force,
+    });
+  }, [announceVoice, screen, weightAlertMessage, weightStatus, weightStatusLabel, weightStatusType]);
+
+  useEffect(() => {
+    if (screen !== "height") return;
+
+    let prompt = "";
+    let key = "";
+    let force = false;
+
+    const statusText = String(heightStatus || "").toLowerCase();
+    const alertText = String(heightAlertMessage || "").toLowerCase();
+    const labelText = String(heightStatusLabel || "").toLowerCase();
+
+    if (heightStatusType === "done") {
+      prompt = "Height measurement complete.";
+      key = "height-complete";
+      force = true;
+    } else if (
+      alertText.includes("remain still")
+      || labelText.includes("hold still")
+      || statusText.includes("waiting for stable")
+    ) {
+      prompt = "Please stay still. Keep your body straight.";
+      key = "height-still";
+    } else if (
+      alertText.includes("stand straight")
+      || alertText.includes("head level")
+      || statusText.includes("hold your posture")
+    ) {
+      prompt = "Please stand straight and avoid moving.";
+      key = "height-straight";
+    } else if (
+      statusText.includes("stand under sensor")
+      || statusText.includes("stand centered under the sensor")
+      || alertText.includes("under the sensor")
+      || alertText.includes("stand centered")
+    ) {
+      prompt = "Please stand at the center of the platform.";
+      key = "height-center";
+    }
+
+    if (!prompt) return;
+    announceVoice(prompt, {
+      key,
+      cooldownMs: force ? 0 : 4500,
+      force,
+    });
+  }, [announceVoice, heightAlertMessage, heightStatus, heightStatusLabel, heightStatusType, screen]);
+
+  useEffect(() => {
+    if (screen !== "identification" && screen !== "registration") return;
+
+    const popupTitle = String(cameraPopup?.title || "").toLowerCase();
+    const popupDetail = String(cameraPopup?.detail || "").toLowerCase();
+    const messageText = String(cameraMessage || "").toLowerCase();
+    const poseText = String(cameraPose || "").toLowerCase();
+    let prompt = "";
+    let key = "";
+    let force = false;
+
+    if (screen === "identification") {
+      if (popupTitle.includes("real face required") || popupDetail.includes("spoof")) {
+        prompt = "Face verification failed. Please try again.";
+        key = "identify-spoof";
+        force = true;
+      } else if (popupTitle.includes("identification unavailable") || popupTitle.includes("connection error")) {
+        prompt = "Face verification failed. Please try again.";
+        key = "identify-failed";
+        force = true;
+      } else if (messageText.includes("existing record found") || messageText.includes("loading result")) {
+        prompt = "Identity verified.";
+        key = "identify-success";
+        force = true;
+      } else if (messageText.includes("not registered yet") || messageText.includes("no confirmed match found")) {
+        prompt = "Face not recognized. Please continue as guest or register.";
+        key = "identify-guest";
+        force = true;
+      } else if (messageText.includes("multiple faces")) {
+        prompt = "Please keep only one person in front of the camera.";
+        key = "identify-one-person";
+      } else if (messageText.includes("move closer")) {
+        prompt = "Please move closer.";
+        key = "identify-closer";
+      } else if (messageText.includes("move back")) {
+        prompt = "Please move back a little.";
+        key = "identify-back";
+      } else if (messageText.includes("center your face") || messageText.includes("align your face")) {
+        prompt = "Please center your face.";
+        key = "identify-center";
+      } else if (messageText.includes("no face detected")) {
+        prompt = "No face detected. Please face the camera.";
+        key = "identify-no-face";
+      } else if (poseText.includes("hold still") || messageText.includes("verifying identity") || messageText.includes("look straight")) {
+        prompt = "Face detected. Please hold still.";
+        key = "identify-hold";
+      }
+    } else {
+      const registrationInstructions = {
+        center: "Please look at the camera.",
+        "turn left": "Please turn your head slightly to the left.",
+        "turn right": "Please turn your head slightly to the right.",
+        "look up": "Please look up.",
+        "look down": "Please look down.",
+        blink: "Please blink.",
+      };
+
+      if (popupTitle.includes("registration complete") || messageText.includes("face saved")) {
+        prompt = "Face registration complete.";
+        key = "register-complete";
+        force = true;
+      } else if (popupTitle.includes("registration blocked") || popupTitle.includes("registration unavailable") || messageText.includes("registration failed")) {
+        prompt = "Face registration failed. Please try again.";
+        key = "register-failed";
+        force = true;
+      } else if (messageText.includes("no face detected")) {
+        prompt = "Please face the camera.";
+        key = "register-no-face";
+      } else if (messageText.includes("move closer")) {
+        prompt = "Please move closer.";
+        key = "register-closer";
+      } else if (messageText.includes("move back")) {
+        prompt = "Please move back a little.";
+        key = "register-back";
+      } else if (messageText.includes("center your face") || messageText.includes("align your face")) {
+        prompt = "Please center your face.";
+        key = "register-center";
+      } else if (messageText.includes("hold still")) {
+        prompt = "Please stay still.";
+        key = "register-still";
+      } else if (messageText.includes("please turn") || messageText.includes("please tilt") || messageText.includes("blink once")) {
+        prompt = "Please try again.";
+        key = "register-try-again";
+      } else if (poseText in registrationInstructions) {
+        const baseInstruction = registrationInstructions[poseText];
+        const previousPose = lastRegistrationPoseRef.current;
+        const shouldPraise = previousPose && previousPose !== poseText && previousPose !== "align your face";
+        prompt = shouldPraise ? `Good. Please continue. ${baseInstruction}` : baseInstruction;
+        key = `register-pose-${poseText}`;
+      }
+    }
+
+    lastRegistrationPoseRef.current = String(cameraPose || "").toLowerCase();
+
+    if (!prompt) return;
+    announceVoice(prompt, {
+      key,
+      cooldownMs: force ? 0 : 4500,
+      force,
+    });
+  }, [announceVoice, cameraMessage, cameraPopup, cameraPose, screen]);
 
   useEffect(() => {
     if (isPreviewMode) return;
@@ -947,6 +1273,11 @@ export default function App() {
                 setCameraPose("Done");
                 setCameraMessage("Face saved.");
                 setCameraPopup({ tone: "success", title: "Registration Complete", detail: "Face profile saved successfully." });
+                announceVoice("Face registration complete.", {
+                  key: "register-complete-direct",
+                  cooldownMs: 0,
+                  force: true,
+                });
                 queue(() => setScreen(returnToStartAfterSave ? "saving" : "weight"), 1500);
                 return;
               } catch (error) {
@@ -1029,21 +1360,30 @@ export default function App() {
                 identificationCloseMatchStreak = 0;
                 const profile = await getUserProfile(result.userId).catch(() => null);
                 if (controller.signal.aborted) return;
-                setUser((prev) => ({
-                  ...prev,
-                  id: String(result.userId),
-                  name: profile?.name ?? result.name ?? "",
-                  age: profile?.age ?? null,
-                  sex: profile?.sex ?? "",
-                  password: profile?.password ?? prev.password,
-                  mustResetPassword: typeof profile?.mustResetPassword === "boolean" ? profile.mustResetPassword : prev.mustResetPassword,
-                  isGuest: false,
-                }));
+                setUser((prev) => {
+                  const next = {
+                    ...prev,
+                    id: String(result.userId),
+                    name: profile?.name ?? result.name ?? "",
+                    age: profile?.age ?? null,
+                    sex: profile?.sex ?? "",
+                    password: profile?.password ?? prev.password,
+                    mustResetPassword: typeof profile?.mustResetPassword === "boolean" ? profile.mustResetPassword : prev.mustResetPassword,
+                    isGuest: false,
+                  };
+                  const bmiData = computeBmi(next.weightKg, next.heightCm, next.age, next.sex);
+                  return { ...next, ...bmiData };
+                });
                 setCameraProgress(100);
                 setCameraPose("Done");
                 setCameraMessage("Existing record found. Loading result.");
                 setCameraPopup(null);
-                setScreen("result");
+                announceVoice("Identity verified.", {
+                  key: "identify-verified-direct",
+                  cooldownMs: 0,
+                  force: true,
+                });
+                setScreen("saving");
                 return;
               }
 
@@ -1053,6 +1393,11 @@ export default function App() {
                   setCameraProgress(28);
                   setCameraPose("Align your face");
                   setCameraMessage("No confirmed match found.");
+                  announceVoice("Face not recognized. Please continue as guest or register.", {
+                    key: "identify-guest-direct",
+                    cooldownMs: 0,
+                    force: true,
+                  });
                   continueAsGuest();
                   return;
                 }
@@ -1076,6 +1421,11 @@ export default function App() {
               setCameraProgress(28);
               setCameraPose("Align your face");
               setCameraMessage("Not registered yet.");
+              announceVoice("Face not recognized. Please continue as guest or register.", {
+                key: "identify-guest-direct",
+                cooldownMs: 0,
+                force: true,
+              });
               continueAsGuest();
               return;
             } catch (error) {
@@ -1201,6 +1551,11 @@ export default function App() {
           setWeightStatus(`Weight locked at ${weightKg.toFixed(1)} kg.`);
           setWeightReturnMessage("");
           setWeightRetryCount(0);
+          announceVoice("Weight measurement complete.", {
+            key: "weight-complete-direct",
+            cooldownMs: 0,
+            force: true,
+          });
           startMeasureAutoNextCountdown("Weight", "height");
           return;
         } catch (error) {
@@ -1338,6 +1693,11 @@ export default function App() {
           setHeightReturnMessage("");
           enrollmentFinalizedRef.current = true;
           setHeightRetryCount(0);
+          announceVoice("Height measurement complete.", {
+            key: "height-complete-direct",
+            cooldownMs: 0,
+            force: true,
+          });
           startMeasureAutoNextCountdown("Height", "identification");
           return;
         } catch (error) {
@@ -1519,9 +1879,51 @@ export default function App() {
     setHeightRunId((prev) => prev + 1);
   };
 
+  const handleStartSession = useCallback(() => {
+    console.log("[DEBUG] SET SCREEN TO REMINDERS");
+    setScreen("reminders");
+  }, []);
+
+  useEffect(() => {
+    if (isPreviewMode) return undefined;
+    if (isAdminView) return undefined;
+    if (screen !== "welcome") return undefined;
+
+    let started = false;
+    const start = () => {
+      if (started) return;
+      started = true;
+      handleStartSession();
+    };
+    const onPointer = () => start();
+    const onKey = (event) => {
+      const key = String(event.key || "").toLowerCase();
+      if (key === "enter" || key === " ") start();
+    };
+
+    window.addEventListener("pointerup", onPointer, { capture: true });
+    window.addEventListener("click", onPointer, { capture: true });
+    window.addEventListener("keydown", onKey, { capture: true });
+    const timeoutId = window.setTimeout(start, Math.max(2000, WELCOME_AUTO_START_MS));
+
+    return () => {
+      started = true;
+      window.removeEventListener("pointerup", onPointer, { capture: true });
+      window.removeEventListener("click", onPointer, { capture: true });
+      window.removeEventListener("keydown", onKey, { capture: true });
+      window.clearTimeout(timeoutId);
+    };
+  }, [handleStartSession, isAdminView, isPreviewMode, screen, WELCOME_AUTO_START_MS]);
+
   useEffect(() => {
     if (isPreviewMode) return;
     if (screen !== "saving") return;
+    if (user.isGuest) {
+      setSaveTitle("Guest Session");
+      setSaveMessage("Guest results are not stored. Returning to the result screen...");
+      queue(() => setScreen("result"), 900);
+      return;
+    }
     if (user.weightKg == null || user.heightCm == null || user.bmi == null) {
       setSaveMessage("Incomplete enrollment. Returning to menu...");
       void discardIncompleteEnrollment();
@@ -1531,8 +1933,8 @@ export default function App() {
     clearTimers();
     setFooterHint("Saving record");
     const shouldForceOfflineQueue = connection !== "online" || (typeof navigator !== "undefined" && navigator.onLine === false);
-    setSaveTitle(shouldForceOfflineQueue ? "Offline Save" : "Syncing");
-    setSaveMessage(shouldForceOfflineQueue ? "No internet detected. Saving locally on this kiosk..." : "Saving to Firebase...");
+    setSaveTitle(shouldForceOfflineQueue ? "Offline Save" : "Saving");
+    setSaveMessage(shouldForceOfflineQueue ? "No internet detected. Saving locally on this kiosk..." : "Saving locally, then syncing to Firebase...");
 
     let cancelled = false;
     (async () => {
@@ -1543,8 +1945,8 @@ export default function App() {
         savedResultKeyRef.current = `${user.id}:${user.weightKg}:${user.heightCm}:${user.bmi}`;
         if (cancelled) return;
         const queued = Boolean(profileResult?.queued || measurementResult?.queued);
-        setSaveTitle(queued ? "Saved Offline" : "Sync Complete");
-        setSaveMessage(queued ? "Saved locally on the kiosk. All offline records will sync to Firebase once internet is available." : "Cloud save complete.");
+        setSaveTitle(queued ? "Saved Locally" : "Sync Complete");
+        setSaveMessage(queued ? "Saved locally on the kiosk. Background sync to Firebase will continue automatically." : "Saved locally and synced to Firebase.");
         guestRegistrationSnapshotRef.current = null;
       } catch (error) {
         if (cancelled) return;
@@ -1570,13 +1972,16 @@ export default function App() {
     if (screen !== "result") return;
     setFooterHint("Session complete");
     setTimerBadge("Auto reset in 2 mins");
+    if (user.isGuest) {
+      const id = setTimeout(() => {
+        setTimerBadge("Resetting");
+        reset();
+      }, 120000);
+      return () => clearTimeout(id);
+    }
     const resultKey = `${user.id}:${user.weightKg}:${user.heightCm}:${user.bmi}`;
     if (user.id && user.weightKg != null && user.heightCm != null && user.bmi != null && savedResultKeyRef.current !== resultKey) {
       savedResultKeyRef.current = resultKey;
-      const shouldForceOfflineQueue = connection !== "online" || (typeof navigator !== "undefined" && navigator.onLine === false);
-      void saveMeasurement(user, { forceQueue: shouldForceOfflineQueue }).catch((error) => {
-        console.error("Result measurement save failed:", error);
-      });
     }
     const id1 = setTimeout(() => setFooterHint("Auto reset in 2 mins"), 5000);
     const id2 = setTimeout(() => {
@@ -1611,13 +2016,12 @@ export default function App() {
         }
       : null;
 
-    if (screen === "welcome") return <IntroPage onStart={() => setScreen("reminders")} />;
+    if (screen === "welcome") return <IntroPage onStart={handleStartSession} />;
     if (screen === "terms") {
       return (
         <TermsPage
           agree={agreeTerms}
           setAgree={setAgreeTerms}
-          onBackToStart={reset}
           onDecline={() => {
             setAgreeTerms(false);
             if (returnToStartAfterSave && guestRegistrationSnapshotRef.current) {
@@ -1630,12 +2034,21 @@ export default function App() {
             }
             setScreen("welcome");
           }}
-          onNext={() => setScreen("full-name")}
+          onCancel={cancelAndReset}
+          onNext={() => {
+            console.log('[UI] Terms accepted');
+            setScreen("full-name");
+          }}
         />
       );
     }
-    if (screen === "reminders") return <RemindersPage />;
-    if (screen === "full-name") return <FullNamePage value={{ firstName: newUserForm.firstName, middleInitial: newUserForm.middleInitial, lastName: newUserForm.lastName }} onChange={(v) => setNewUserForm((f) => ({ ...f, ...v }))} onBack={() => setScreen("terms")} onNext={() => {
+    if (screen === "reminders") return <RemindersPage onCancel={cancelAndReset} onNext={() => {
+      console.log('[UI] Reminders continue clicked');
+      setMode("identify");
+      setScreen("weight");
+    }} />;
+    if (screen === "full-name") return <FullNamePage value={{ firstName: newUserForm.firstName, middleInitial: newUserForm.middleInitial, lastName: newUserForm.lastName }} onChange={(v) => setNewUserForm((f) => ({ ...f, ...v }))} onCancel={cancelAndReset} onBack={() => setScreen("terms")} onNext={() => {
+      console.log('[UI] Full name submitted');
       const fullName = composeFullName(newUserForm);
       setUser((prev) => ({ ...prev, name: fullName || prev.name || "Guest" }));
       if (returnToStartAfterSave) {
@@ -1647,8 +2060,26 @@ export default function App() {
       }
       setScreen("age");
     }} />;
-    if (screen === "age") return <AgePage value={newUserForm.age} onChange={(v) => setNewUserForm((f) => ({ ...f, age: v }))} onBack={() => setScreen(user.isGuest ? "identification" : "full-name")} onNext={() => setScreen("sex")} />;
-    if (screen === "sex") return <SexPage sex={newUserForm.sex} setSex={(v) => setNewUserForm((f) => ({ ...f, sex: v }))} onBack={() => setScreen("age")} onNext={() => {
+    if (screen === "input") {
+      return (
+        <InputPage
+          value={{ age: newUserForm.age, sex: newUserForm.sex }}
+          onChange={(v) => setNewUserForm((f) => ({ ...f, age: v.age ?? "", sex: v.sex ?? "" }))}
+          onCancel={cancelAndReset}
+          onBack={() => setScreen("identification")}
+          onNext={() => {
+            setUser((prev) => {
+              const next = { ...prev, age: Number(newUserForm.age), sex: newUserForm.sex, name: prev.name || "Guest" };
+              const bmiData = computeBmi(next.weightKg, next.heightCm, next.age, next.sex);
+              return { ...next, ...bmiData };
+            });
+            setScreen("result");
+          }}
+        />
+      );
+    }
+    if (screen === "age") return <AgePage value={newUserForm.age} onChange={(v) => setNewUserForm((f) => ({ ...f, age: v }))} onCancel={cancelAndReset} onBack={() => setScreen(user.isGuest ? "identification" : "full-name")} onNext={() => setScreen("sex")} />;
+    if (screen === "sex") return <SexPage sex={newUserForm.sex} setSex={(v) => setNewUserForm((f) => ({ ...f, sex: v }))} onCancel={cancelAndReset} onBack={() => setScreen("age")} onNext={() => {
       if (user.isGuest) {
         setUser((prev) => {
           const next = { ...prev, age: Number(newUserForm.age), sex: newUserForm.sex, name: prev.name || "Guest" };
@@ -1666,8 +2097,8 @@ export default function App() {
       setMode("registration");
       setScreen("registration");
     }} />;
-    if (screen === "registration") return <CameraPage mode="registration" title="Facial Registration" pose={isPreviewMode ? previewCameraProps.pose : cameraPose} progress={isPreviewMode ? previewCameraProps.progress : cameraProgress} message={isPreviewMode ? previewCameraProps.message : cameraMessage} returnMessage={isPreviewMode ? previewCameraProps.returnMessage : cameraReturnMessage} popup={isPreviewMode ? previewCameraProps.popup : cameraPopup} onCancel={() => setScreen("welcome")} onRetry={isPreviewMode ? previewCameraProps.onRetry : (cameraCanRetry ? retryCameraFlow : undefined)} onNext={() => setScreen("weight")} onPopupAction={handleCameraPopupAction} onVideoReady={(videoEl) => { cameraVideoRef.current = videoEl; }} />;
-    if (screen === "identification") return <CameraPage mode="identification" title="Facial Identification" pose={isPreviewMode ? previewCameraProps.pose : cameraPose} progress={isPreviewMode ? previewCameraProps.progress : cameraProgress} message={isPreviewMode ? previewCameraProps.message : cameraMessage} returnMessage={isPreviewMode ? previewCameraProps.returnMessage : cameraReturnMessage} popup={isPreviewMode ? previewCameraProps.popup : cameraPopup} onCancel={() => setScreen("reminders")} onRetry={isPreviewMode ? previewCameraProps.onRetry : (cameraCanRetry ? retryCameraFlow : undefined)} onPopupAction={handleCameraPopupAction} onVideoReady={(videoEl) => { cameraVideoRef.current = videoEl; }} />;
+    if (screen === "registration") return <CameraPage mode="registration" title="Facial Registration" pose={isPreviewMode ? previewCameraProps.pose : cameraPose} progress={isPreviewMode ? previewCameraProps.progress : cameraProgress} message={isPreviewMode ? previewCameraProps.message : cameraMessage} returnMessage={isPreviewMode ? previewCameraProps.returnMessage : cameraReturnMessage} popup={isPreviewMode ? previewCameraProps.popup : cameraPopup} onCancel={cancelAndReset} onRetry={isPreviewMode ? previewCameraProps.onRetry : (cameraCanRetry ? retryCameraFlow : undefined)} onNext={() => setScreen("weight")} onPopupAction={handleCameraPopupAction} onVideoReady={(videoEl) => { cameraVideoRef.current = videoEl; }} previewMode={isPreviewMode} />;
+    if (screen === "identification") return <CameraPage mode="identification" title="Facial Identification" pose={isPreviewMode ? previewCameraProps.pose : cameraPose} progress={isPreviewMode ? previewCameraProps.progress : cameraProgress} message={isPreviewMode ? previewCameraProps.message : cameraMessage} returnMessage={isPreviewMode ? previewCameraProps.returnMessage : cameraReturnMessage} popup={isPreviewMode ? previewCameraProps.popup : cameraPopup} onCancel={cancelAndReset} onRetry={isPreviewMode ? previewCameraProps.onRetry : (cameraCanRetry ? retryCameraFlow : undefined)} onPopupAction={handleCameraPopupAction} onVideoReady={(videoEl) => { cameraVideoRef.current = videoEl; }} previewMode={isPreviewMode} />;
     if (screen === "identity-confirm") {
       return (
         <IdentityConfirmPage
@@ -1677,20 +2108,32 @@ export default function App() {
         />
       );
     }
-    if (screen === "weight") return <MeasurePage title="Weight Measurement" status={weightStatus} statusType={weightStatusType} statusLabel={weightStatusLabel} alertTitle={weightAlertTitle} alertMessage={weightAlertMessage} returnMessage={weightReturnMessage} label="Weight" loading={isPreviewMode ? false : user.weightKg == null} value={isPreviewMode ? "64.5 kg" : (user.weightKg != null ? `${user.weightKg.toFixed(1)} kg` : "--.- kg")} onCancel={handleBackToMenuFromMeasure} onBackToMenu={handleBackToMenuFromMeasure} onRetry={isPreviewMode ? () => {} : (weightStatusType === "error" && weightRetryCount < MAX_SENSOR_RETRIES ? retryWeightMeasurement : undefined)} />;
-    if (screen === "height") return <MeasurePage title="Height Measurement" status={heightStatus} statusType={heightStatusType} statusLabel={heightStatusLabel} alertTitle={heightAlertTitle} alertMessage={heightAlertMessage} returnMessage={heightReturnMessage} label="Height" loading={isPreviewMode ? false : user.heightCm == null} value={isPreviewMode ? "171 cm" : (user.heightCm != null ? `${user.heightCm} cm` : "-- cm")} onCancel={handleBackToMenuFromMeasure} onBackToMenu={handleBackToMenuFromMeasure} onRetry={isPreviewMode ? () => {} : (heightStatusType === "error" && heightRetryCount < MAX_SENSOR_RETRIES ? retryHeightMeasurement : undefined)} />;
+    if (screen === "weight") return <MeasurePage title="Weight Measurement" status={weightStatus} statusType={weightStatusType} statusLabel={weightStatusLabel} alertTitle={weightAlertTitle} alertMessage={weightAlertMessage} returnMessage={weightReturnMessage} label="Weight" loading={isPreviewMode ? false : user.weightKg == null} value={isPreviewMode ? "64.5 kg" : (user.weightKg != null ? `${user.weightKg.toFixed(1)} kg` : "--.- kg")} onCancel={cancelAndReset} onBackToMenu={cancelAndReset} onRetry={isPreviewMode ? () => {} : (weightStatusType === "error" && weightRetryCount < MAX_SENSOR_RETRIES ? retryWeightMeasurement : undefined)} onNext={() => { console.log('[UI] Weight complete -> Height'); setScreen("height"); }} />;
+    if (screen === "height") return <MeasurePage title="Height Measurement" status={heightStatus} statusType={heightStatusType} statusLabel={heightStatusLabel} alertTitle={heightAlertTitle} alertMessage={heightAlertMessage} returnMessage={heightReturnMessage} label="Height" loading={isPreviewMode ? false : user.heightCm == null} value={isPreviewMode ? "171 cm" : (user.heightCm != null ? `${user.heightCm} cm` : "-- cm")} onCancel={cancelAndReset} onBackToMenu={cancelAndReset} onRetry={isPreviewMode ? () => {} : (heightStatusType === "error" && heightRetryCount < MAX_SENSOR_RETRIES ? retryHeightMeasurement : undefined)} onNext={() => { console.log('[UI] Height complete -> Face'); setScreen("identification"); }} />;
     if (screen === "saving") return <SavingPage title={isPreviewMode ? "Preview Save" : saveTitle} message={isPreviewMode ? "Previewing save screen..." : saveMessage} />;
-    if (screen === "result") return <ResultPage user={user} onReset={reset} onAnalytics={!user.isGuest ? openAnalytics : undefined} onRegister={user.isGuest ? () => handleCameraPopupAction("register") : undefined} />;
+    if (screen === "result") {
+      const resultOfflineNotice = !user.isGuest && (
+        connection !== "online"
+        || String(saveTitle || "").toLowerCase().includes("local")
+      )
+        ? "Offline mode: result saved locally and will sync when internet returns."
+        : "";
+      return <ResultPage user={user} offlineNotice={resultOfflineNotice} onReset={reset} onAnalytics={!user.isGuest ? openAnalytics : undefined} onRegister={user.isGuest ? () => { console.log('[UI] Guest result Register clicked'); handleCameraPopupAction("register"); } : undefined} />;
+    }
     if (screen === "analytics") return <AnalyticsPage user={user} history={resultHistory} onBack={() => setScreen("result")} onFinish={reset} />;
-    return <IntroPage onStart={() => setScreen("reminders")} />;
-  }, [isAdminView, isPreviewMode, previewCameraPose, previewCameraTone, screen, agreeTerms, newUserForm, user, cameraMessage, cameraPose, cameraProgress, cameraReturnMessage, cameraPopup, weightStatus, weightStatusType, weightStatusLabel, weightAlertTitle, weightAlertMessage, weightReturnMessage, weightCaptureSecondsLeft, heightStatus, heightStatusType, heightStatusLabel, heightAlertTitle, heightAlertMessage, heightReturnMessage, heightCaptureSecondsLeft, saveMessage, saveTitle, returnToStartAfterSave, resultHistory]);
+    return <IntroPage onStart={handleStartSession} />;
+  }, [isAdminView, isPreviewMode, previewCameraPose, previewCameraTone, screen, agreeTerms, newUserForm, user, cameraMessage, cameraPose, cameraProgress, cameraReturnMessage, cameraPopup, weightStatus, weightStatusType, weightStatusLabel, weightAlertTitle, weightAlertMessage, weightReturnMessage, weightCaptureSecondsLeft, heightStatus, heightStatusType, heightStatusLabel, heightAlertTitle, heightAlertMessage, heightReturnMessage, heightCaptureSecondsLeft, saveMessage, saveTitle, returnToStartAfterSave, resultHistory, handleStartSession]);
+
+  const showWelcomeChrome = !isAdminView && screen === "welcome";
 
   return (
     <>
-      <div className="ambient-bg" aria-hidden="true">
-        <div className="ambient-orb orb-a" />
-        <div className="ambient-orb orb-b" />
-      </div>
+      {showWelcomeChrome ? (
+        <div className="ambient-bg" aria-hidden="true">
+          <div className="ambient-orb orb-a" />
+          <div className="ambient-orb orb-b" />
+        </div>
+      ) : null}
       <main className="kiosk-shell tech-surface">
         <section className="tablet-frame">
           <header className="topbar">
@@ -1709,53 +2152,37 @@ export default function App() {
             </div>
           </header>
           <section className={`screen ${screen === "welcome" ? "screen-welcome" : ""}`}>
-            <div className="intro-animated-bg" aria-hidden="true">
-              <div className="intro-gradient" />
-              <div className="intro-orb intro-orb-a" />
-              <div className="intro-orb intro-orb-b" />
-              <div className="intro-orb intro-orb-c" />
-              <motion.div
-                className="intro-float intro-float-heart"
-                animate={{ y: [0, -12, 0], rotate: [0, 8, 0] }}
-                transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
-              >
-                <Heart className="intro-icon" />
-              </motion.div>
-              <motion.div
-                className="intro-float intro-float-activity"
-                animate={{ y: [0, 12, 0], rotate: [0, -8, 0] }}
-                transition={{ duration: 7, repeat: Infinity, ease: "easeInOut", delay: 1 }}
-              >
-                <Activity className="intro-icon" />
-              </motion.div>
-              <motion.div
-                className="intro-float intro-float-scale"
-                animate={{ y: [0, -10, 0], rotate: [0, 10, 0] }}
-                transition={{ duration: 8, repeat: Infinity, ease: "easeInOut", delay: 2 }}
-              >
-                <Scale className="intro-icon" />
-              </motion.div>
+            {showWelcomeChrome ? (
+              <div className="intro-animated-bg" aria-hidden="true">
+                <div className="intro-gradient" />
+                <div className="intro-orb intro-orb-a" />
+                <div className="intro-orb intro-orb-b" />
+                <div className="intro-orb intro-orb-c" />
+                <div className="intro-float intro-float-heart">
+                  <Heart className="intro-icon" />
+                </div>
+                <div className="intro-float intro-float-activity">
+                  <Activity className="intro-icon" />
+                </div>
+                <div className="intro-float intro-float-scale">
+                  <Scale className="intro-icon" />
+                </div>
+              </div>
+            ) : null}
+            <div
+              key={isAdminView ? "admin" : screen}
+              className={`page-wrap ${
+                isAdminView || screen === "welcome" || screen === "reminders" || screen === "saving" || screen === "terms" || screen === "result"
+                  ? "page-wrap-centered"
+                  : ""
+              } ${
+                !isAdminView && (screen === "registration" || screen === "identification")
+                  ? "page-wrap-fit"
+                  : ""
+              }`}
+            >
+              {page}
             </div>
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={isAdminView ? "admin" : screen}
-                className={`page-wrap ${
-                  isAdminView || screen === "welcome" || screen === "reminders" || screen === "saving" || screen === "terms" || screen === "result"
-                    ? "page-wrap-centered"
-                    : ""
-                } ${
-                  !isAdminView && (screen === "registration" || screen === "identification")
-                    ? "page-wrap-fit"
-                    : ""
-                }`}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.28, ease: "easeOut" }}
-              >
-                {page}
-              </motion.div>
-            </AnimatePresence>
           </section>
         </section>
       </main>

@@ -30,7 +30,7 @@ function normalizeNameCase(value) {
   return out;
 }
 
-export default function FullNamePage({ value, onChange, onBack, onNext }) {
+export default function FullNamePage({ value, onChange, onBack, onNext, onCancel }) {
   const [activeField, setActiveField] = useState("firstName");
 
   const valid = value.firstName.trim().length > 0 && value.lastName.trim().length > 0;
@@ -106,6 +106,9 @@ export default function FullNamePage({ value, onChange, onBack, onNext }) {
         <VirtualKeyboard mode="name" value={activeValue} onChange={handleKeyboardChange} />
       </div>
       <div className="actions name-actions">
+        {typeof onCancel === "function" ? (
+          <button className="btn" onClick={onCancel}>Cancel</button>
+        ) : null}
         <button className="btn" onClick={onBack}>Back</button>
         <button className="btn btn-primary btn-xl name-next-btn" disabled={!valid} onClick={onNext}>Next</button>
       </div>

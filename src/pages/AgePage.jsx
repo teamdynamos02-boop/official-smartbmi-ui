@@ -1,6 +1,6 @@
 import VirtualKeyboard from "../components/VirtualKeyboard";
 
-export default function AgePage({ value, onChange, onBack, onNext }) {
+export default function AgePage({ value, onChange, onBack, onNext, onCancel }) {
   const num = Number(value);
   const isEmpty = String(value).trim() === "";
   const isValid = !isEmpty && Number.isFinite(num) && num >= 5 && num <= 120;
@@ -22,8 +22,9 @@ export default function AgePage({ value, onChange, onBack, onNext }) {
         <VirtualKeyboard mode="age" value={value} onChange={onChange} />
       </div>
       <div className="actions age-actions">
-        <button className="btn" onClick={onBack}>Back</button>
-        <button className="btn btn-primary btn-xl age-next-btn" disabled={!isValid} onClick={onNext}>Next</button>
+        {typeof onCancel === "function" && <button type="button" className="btn" onClick={onCancel}>Cancel</button>}
+        <button type="button" className="btn" onClick={onBack}>Back</button>
+        <button type="button" className="btn btn-primary btn-xl age-next-btn" disabled={!isValid} onClick={onNext}>Next</button>
       </div>
     </div>
   );

@@ -12,6 +12,11 @@ fi
 
 cd "${APP_DIR}"
 
+if [[ ! -d "${APP_DIR}/dist" ]]; then
+  echo "Smart BMI frontend dist build is missing. Run: npm run build"
+  exit 1
+fi
+
 if [[ -x "${APP_DIR}/.venv/bin/python" ]]; then
   exec "${APP_DIR}/.venv/bin/python" "${APP_DIR}/scripts/serve_dist.py" --dir "${APP_DIR}/dist" --host 0.0.0.0 --port 4173
 fi

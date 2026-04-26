@@ -77,6 +77,15 @@ export function classifyAdultBmi(bmi) {
   return "Obese";
 }
 
+export function normalizeBmiCategory(category) {
+  const value = String(category || "").trim().toLowerCase();
+  if (value.includes("under")) return "Underweight";
+  if (value.includes("healthy") || value.includes("normal")) return "Normal";
+  if (value.includes("over")) return "Overweight";
+  if (value.includes("obes")) return "Obese";
+  return category || "--";
+}
+
 export function classifyMinorBmi({ bmi, age, sex }) {
   const sexCode = normalizeSex(sex);
   const ageYears = toNumber(age);
@@ -100,12 +109,12 @@ export function classifyMinorBmi({ bmi, age, sex }) {
     return { category: "Underweight", basis: "minor-percentile", percentileBand: "<5th" };
   }
   if (bmi < thresholds.p85) {
-    return { category: "Healthy Weight", basis: "minor-percentile", percentileBand: "5th-<85th" };
+    return { category: "Normal", basis: "minor-percentile", percentileBand: "5th-<85th" };
   }
   if (bmi < thresholds.p95) {
     return { category: "Overweight", basis: "minor-percentile", percentileBand: "85th-<95th" };
   }
-  return { category: "Obesity", basis: "minor-percentile", percentileBand: ">=95th" };
+  return { category: "Obese", basis: "minor-percentile", percentileBand: ">=95th" };
 }
 
 export function computeBmiAssessment({ weightKg, heightCm, age, sex }) {
@@ -127,4 +136,44 @@ export function computeBmiAssessment({ weightKg, heightCm, age, sex }) {
     basis: "adult",
     percentileBand: null,
   };
+}
+
+const BMI_ANALYTICS_CONTENT = {
+  Underweight: {
+    title: "Underweight",
+    range: "Less than 18.5",
+    statusMessage: "BMI is below the normal range. It may be linked with lower energy reserves, reduced muscle mass, and slower recovery.",
+    prediction: "If BMI stays low, the user may feel fatigue, have less physical reserve, need nutrition support, and weight management.",
+    recommendedAction: "Encourage balanced meals, strength-building activity, enough sleep, and regular follow-up checks.",
+    professionalApprovalNote: "Should be checked by a healthcare professional like doctors and nurse especially if there is appetite loss, unexplained weight loss or weakness. If experience any of the symptoms consult or seek advice to any medical healthcare personnel.",
+  },
+  Normal: {
+    title: "Normal",
+    range: "18.5 to 24.9",
+    statusMessage: "BMI is within the normal range and supports lower weight-related risk when maintained with steady habits.",
+    prediction: "Maintaining this range may support steady energy, easier movement, and lower risk of any weight-related conditions.",
+    recommendedAction: "Continue balanced meals, regular activity, good sleep, and regular BMI monitoring.",
+    professionalApprovalNote: "Monitor weight to ensure body composition remains healthy and monitoring weight to focus on consistency and maintaining healthy lifestyle habits",
+  },
+  Overweight: {
+    title: "Overweight",
+    range: "25.0 to 29.9",
+    statusMessage: "BMI is above the normal range and may increase weight-related health risk over time.",
+    prediction: "If BMI remains in this range, there will be higher risk for any heart condition disease, lack of sleep quality and blood sugar related condition or disease plus other weight related disease condition.",
+    recommendedAction: "Start lifestyle changes such as balance diet, walking, exercise, better sleep and monitoring weight",
+    professionalApprovalNote: "Weight-management advice should be reviewed by a healthcare professional.",
+  },
+  Obese: {
+    title: "Obese",
+    range: "30.0 and above",
+    statusMessage: "BMI is in the obesity range and is linked with higher risk for weight-related health conditions.",
+    prediction: "Higher risk for any heart related disease like hypertension and blood sugar disease like diabetes plus other weight related problem",
+    recommendedAction: "Balance diet, better sleep habits plus monitoring of weight",
+    professionalApprovalNote: "Must be clearly reviewed or approved by a qualified health professional.",
+  },
+};
+
+export function getBmiAnalyticsContent(category) {
+  const normalized = normalizeBmiCategory(category);
+  return BMI_ANALYTICS_CONTENT[normalized] || null;
 }

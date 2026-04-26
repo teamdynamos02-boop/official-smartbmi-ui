@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 
-export default function TermsPage({ agree, setAgree, onDecline, onNext, onBackToStart }) {
+export default function TermsPage({ agree, setAgree, onDecline, onNext, onBackToStart, onCancel }) {
   const termsSections = useMemo(
     () => [
       {
@@ -82,27 +82,32 @@ export default function TermsPage({ agree, setAgree, onDecline, onNext, onBackTo
                 </section>
               ))}
 
-              <div className="terms-consent-block">
-                <label className="checkbox-row">
-                  <input
-                    type="checkbox"
-                    checked={agree}
-                    onChange={(event) => setAgree(event.target.checked)}
-                  />
-                  <span>
-                    I have read and agree to the Terms and Conditions and consent to the secure processing of my personal
-                    data.
-                  </span>
-                </label>
+            </div>
+            <div className="terms-consent-block">
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={agree}
+                  onChange={(event) => setAgree(event.target.checked)}
+                />
+                <span>
+                  I have read and agree to the Terms and Conditions and consent to the secure processing of my personal
+                  data.
+                </span>
+              </label>
 
-                <div className="actions terms-actions-inline">
-                  <button className="btn btn-danger" onClick={onDecline}>
-                    Decline
+              <div className="actions terms-actions-inline">
+                {typeof onCancel === "function" ? (
+                  <button className="btn" onClick={onCancel}>
+                    Cancel
                   </button>
-                  <button className="btn btn-primary" disabled={!agree} onClick={onNext}>
-                    Continue
-                  </button>
-                </div>
+                ) : null}
+                <button className="btn btn-danger" onClick={onDecline}>
+                  Decline
+                </button>
+                <button className="btn btn-primary" disabled={!agree} onClick={onNext}>
+                  Continue
+                </button>
               </div>
             </div>
           </div>

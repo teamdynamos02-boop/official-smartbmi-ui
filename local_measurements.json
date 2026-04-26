@@ -1,0 +1,63 @@
+{
+  "measurements": {
+    "20055": [
+      {
+        "id": "measurement-1776183740416-xedxgn5n",
+        "user_id": "20055",
+        "userId": "20055",
+        "name": "",
+        "age": null,
+        "sex": "",
+        "weightKg": 64.3,
+        "heightCm": 154,
+        "bmi": 27.1,
+        "category": "Overweight",
+        "capturedAt": 1776183740416,
+        "timestamp": 1776183740416,
+        "capturedAtFormatted": "04/15/2026 00:22:20",
+        "capturedDate": "04/15/2026",
+        "capturedTime": "00:22:20",
+        "sync_status": "synced",
+        "syncedAt": 1777223546378
+      },
+      {
+        "id": "measurement-1776188365600-c86j0qdy",
+        "user_id": "20055",
+        "userId": "20055",
+        "name": "",
+        "age": null,
+        "sex": "",
+        "weightKg": 64,
+        "heightCm": 153,
+        "bmi": 27.3,
+        "category": "Overweight",
+        "capturedAt": 1776188365600,
+        "timestamp": 1776188365600,
+        "capturedAtFormatted": "04/15/2026 01:39:25",
+        "capturedDate": "04/15/2026",
+        "capturedTime": "01:39:25",
+        "sync_status": "synced",
+        "syncedAt": 1777223546378
+      },
+      {
+        "id": "measurement-1776188476872-iroenlg5",
+        "user_id": "20055",
+        "userId": "20055",
+        "name": "",
+        "age": null,
+        "sex": "",
+        "weightKg": 63.7,
+        "heightCm": 148,
+        "bmi": 29.1,
+        "category": "Overweight",
+        "capturedAt": 1776188476872,
+        "timestamp": 1776188476872,
+        "capturedAtFormatted": "04/15/2026 01:41:16",
+        "capturedDate": "04/15/2026",
+        "capturedTime": "01:41:16",
+        "sync_status": "synced",
+        "syncedAt": 1777223546378
+      }
+    ]
+  }
+}

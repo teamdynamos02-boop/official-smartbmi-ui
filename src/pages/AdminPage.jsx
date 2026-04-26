@@ -63,6 +63,7 @@ export default function AdminPage() {
   const [syncMessage, setSyncMessage] = useState("");
   const [syncError, setSyncError] = useState("");
   const [offlineUsers, setOfflineUsers] = useState([]);
+  const [analyticsSummary, setAnalyticsSummary] = useState(null);
 
   useEffect(() => {
     const unsubscribeCurrent = subscribeToCurrentSystemMonitor(deviceId, setCurrent);
@@ -130,20 +131,47 @@ export default function AdminPage() {
 
   useEffect(() => {
     let mounted = true;
-    const readQueueCount = () => {
-      if (typeof window === "undefined") return;
+    const refreshLocalSync = async () => {
       try {
-        const raw = window.localStorage.getItem("smartbmi.firebase.outbox");
-        const parsed = raw ? JSON.parse(raw) : [];
-        const count = Array.isArray(parsed) ? parsed.length : 0;
-        if (mounted) setOfflineQueueCount(count);
+        const response = await fetch("/local/sync/status");
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload?.ok === false) {
+          throw new Error(payload?.error || "Failed to load local sync status.");
+        }
+        if (!mounted) return;
+        setOfflineQueueCount(Number(payload?.pendingCount) || 0);
+        const pendingItems = Array.isArray(payload?.pending) ? payload.pending : [];
+        const users = new Map();
+        pendingItems.forEach((item) => {
+          const userId = String(item?.user_id || "").trim();
+          const record = item?.payload || {};
+          if (!userId) return;
+          const currentRow = users.get(userId) || {
+            id: userId,
+            name: record?.name || "",
+            measurementsCount: 0,
+            queuedCount: 0,
+            latest: null,
+          };
+          currentRow.queuedCount += 1;
+          if (item?.type === "measurement") {
+            currentRow.measurementsCount += 1;
+            currentRow.latest = record;
+          }
+          if (!currentRow.name && record?.name) currentRow.name = record.name;
+          users.set(userId, currentRow);
+        });
+        setOfflineUsers(Array.from(users.values()).sort((a, b) => String(a.id).localeCompare(String(b.id))));
       } catch {
-        if (mounted) setOfflineQueueCount(0);
+        if (mounted) {
+          setOfflineQueueCount(0);
+          setOfflineUsers([]);
+        }
       }
     };
 
-    readQueueCount();
-    const intervalId = setInterval(readQueueCount, 2000);
+    refreshLocalSync();
+    const intervalId = setInterval(refreshLocalSync, 3000);
     return () => {
       mounted = false;
       clearInterval(intervalId);
@@ -152,84 +180,21 @@ export default function AdminPage() {
 
   useEffect(() => {
     let mounted = true;
-    const loadOfflineUsers = () => {
-      if (typeof window === "undefined") return;
-      const profilePrefix = "smartbmi.user.profile.";
-      const measurementPrefix = "smartbmi.user.measurements.";
-      const outboxKey = "smartbmi.firebase.outbox";
-      const profiles = new Map();
-      const measurements = new Map();
-      const queueCounts = new Map();
-
+    const refreshAnalyticsSummary = async () => {
       try {
-        const rawOutbox = window.localStorage.getItem(outboxKey);
-        const items = rawOutbox ? JSON.parse(rawOutbox) : [];
-        if (Array.isArray(items)) {
-          items.forEach((item) => {
-            const id = String(item?.payload?.user?.id ?? item?.user?.id ?? item?.userId ?? "").trim();
-            if (!id) return;
-            queueCounts.set(id, (queueCounts.get(id) ?? 0) + 1);
-          });
+        const response = await fetch("/local/analytics/summary");
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload?.ok === false) {
+          throw new Error(payload?.error || "Failed to load local analytics summary.");
         }
+        if (mounted) setAnalyticsSummary(payload);
       } catch {
-        // Ignore outbox parsing issues.
+        if (mounted) setAnalyticsSummary(null);
       }
-
-      for (let i = 0; i < window.localStorage.length; i += 1) {
-        const key = window.localStorage.key(i);
-        if (!key) continue;
-        if (key.startsWith(profilePrefix)) {
-          const userId = key.slice(profilePrefix.length);
-          try {
-            const raw = window.localStorage.getItem(key);
-            const parsed = raw ? JSON.parse(raw) : null;
-            if (parsed && typeof parsed === "object") {
-              profiles.set(userId, parsed);
-            }
-          } catch {
-            // Ignore bad profile cache entries.
-          }
-        } else if (key.startsWith(measurementPrefix)) {
-          const userId = key.slice(measurementPrefix.length);
-          try {
-            const raw = window.localStorage.getItem(key);
-            const parsed = raw ? JSON.parse(raw) : [];
-            if (Array.isArray(parsed)) {
-              measurements.set(userId, parsed);
-            }
-          } catch {
-            // Ignore bad measurement cache entries.
-          }
-        }
-      }
-
-      const userIds = new Set([...profiles.keys(), ...measurements.keys(), ...queueCounts.keys()]);
-      const rows = Array.from(userIds).map((id) => {
-        const profile = profiles.get(id) || {};
-        const history = Array.isArray(measurements.get(id)) ? measurements.get(id) : [];
-        const sorted = [...history].sort((a, b) => (Number(a?.capturedAt) || 0) - (Number(b?.capturedAt) || 0));
-        const latest = sorted[sorted.length - 1] || null;
-        return {
-          id,
-          name: profile.name || profile.fullName || "",
-          age: profile.age ?? null,
-          sex: profile.sex ?? "",
-          measurementsCount: history.length,
-          queuedCount: queueCounts.get(id) ?? 0,
-          latest,
-        };
-      }).sort((a, b) => {
-        const aTs = Number(a.latest?.capturedAt) || 0;
-        const bTs = Number(b.latest?.capturedAt) || 0;
-        if (aTs !== bTs) return bTs - aTs;
-        return String(a.id).localeCompare(String(b.id));
-      });
-
-      if (mounted) setOfflineUsers(rows);
     };
 
-    loadOfflineUsers();
-    const intervalId = setInterval(loadOfflineUsers, 2500);
+    refreshAnalyticsSummary();
+    const intervalId = setInterval(refreshAnalyticsSummary, 5000);
     return () => {
       mounted = false;
       clearInterval(intervalId);
@@ -661,6 +626,35 @@ export default function AdminPage() {
                   </span>
                 </div>
               ))
+            )}
+          </div>
+
+          <h3 className="admin-history-title">Offline Analytics</h3>
+          <div className="admin-calibration-card">
+            {analyticsSummary ? (
+              <>
+                <p className="admin-empty">{analyticsSummary.message}</p>
+                <div className="admin-measure-grid">
+                  <div className="admin-measure-item">
+                    <span>Total Users</span>
+                    <strong>{analyticsSummary.totalUsers ?? 0}</strong>
+                  </div>
+                  <div className="admin-measure-item">
+                    <span>Total Measurements</span>
+                    <strong>{analyticsSummary.totalMeasurements ?? 0}</strong>
+                  </div>
+                  <div className="admin-measure-item">
+                    <span>Average BMI</span>
+                    <strong>{analyticsSummary.averageBmi ?? "--"}</strong>
+                  </div>
+                  <div className="admin-measure-item">
+                    <span>Normal BMI</span>
+                    <strong>{analyticsSummary?.bmiCategoryDistribution?.Normal ?? 0}</strong>
+                  </div>
+                </div>
+              </>
+            ) : (
+              <p className="admin-empty">Local analytics summary unavailable.</p>
             )}
           </div>
 

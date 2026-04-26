@@ -6,10 +6,14 @@ const SYSTEM_STATUS_ENDPOINT = import.meta.env.VITE_SYSTEM_STATUS_ENDPOINT ?? "/
 const SYSTEM_DEVICE_ID = import.meta.env.VITE_SYSTEM_DEVICE_ID ?? "smartbmi-kiosk-1";
 const SYSTEM_HISTORY_LIMIT = Number(import.meta.env.VITE_SYSTEM_HISTORY_LIMIT ?? 20);
 const SYSTEM_HISTORY_INTERVAL_MS = Number(import.meta.env.VITE_SYSTEM_HISTORY_INTERVAL_MS ?? 60000);
+const SYSTEM_STATUS_TIMEOUT_MS = Number(import.meta.env.VITE_SYSTEM_STATUS_TIMEOUT_MS ?? 3000);
+const BROWSER_CAMERA_STATUS_CACHE_MS = Number(import.meta.env.VITE_BROWSER_CAMERA_STATUS_CACHE_MS ?? 60000);
 const OFFLINE_QUEUE_KEY = "smartbmi.system-monitor.queue";
 
 let lastHistorySignature = "";
 let lastHistoryWriteAt = 0;
+let cachedCameraStatus = null;
+let cachedCameraStatusAt = 0;
 
 function joinUrl(base, path) {
   const normalizedBase = base.endsWith("/") ? base.slice(0, -1) : base;
@@ -71,38 +75,64 @@ async function flushOfflineQueue(deviceId) {
 }
 
 async function detectBrowserCameraStatus() {
+  if (
+    cachedCameraStatus
+    && (Date.now() - cachedCameraStatusAt) < Math.max(5000, BROWSER_CAMERA_STATUS_CACHE_MS)
+  ) {
+    return cachedCameraStatus;
+  }
+
   if (!navigator?.mediaDevices?.enumerateDevices) {
-    return {
+    cachedCameraStatus = {
       status: "unknown",
       detail: "Browser camera enumeration is not available.",
       detectedAt: Date.now(),
     };
+    cachedCameraStatusAt = Date.now();
+    return cachedCameraStatus;
   }
 
   try {
     const devices = await navigator.mediaDevices.enumerateDevices();
     const count = devices.filter((device) => device.kind === "videoinput").length;
-    return {
+    cachedCameraStatus = {
       status: count > 0 ? "ok" : "warning",
       detail: count > 0 ? `${count} camera input detected.` : "No browser camera input detected.",
       detectedAt: Date.now(),
       count,
     };
+    cachedCameraStatusAt = Date.now();
+    return cachedCameraStatus;
   } catch (error) {
-    return {
+    cachedCameraStatus = {
       status: "warning",
       detail: error?.message || "Camera enumeration failed.",
       detectedAt: Date.now(),
     };
+    cachedCameraStatusAt = Date.now();
+    return cachedCameraStatus;
   }
 }
 
 export async function fetchSystemStatus(signal) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), Math.max(500, SYSTEM_STATUS_TIMEOUT_MS));
   const response = await fetch(joinUrl(SYSTEM_API_BASE, SYSTEM_STATUS_ENDPOINT), {
     method: "GET",
     headers: { Accept: "application/json" },
-    signal,
+    signal: controller.signal,
+  }).catch((error) => {
+    if (error?.name === "AbortError") {
+      throw new Error("System status request timed out");
+    }
+    throw error;
+  }).finally(() => {
+    window.clearTimeout(timeoutId);
   });
+
+  if (signal?.aborted) {
+    throw new Error("System status request cancelled");
+  }
 
   if (!response.ok) {
     throw new Error(`System status request failed with HTTP ${response.status}`);

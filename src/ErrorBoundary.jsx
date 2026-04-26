@@ -4,6 +4,7 @@ export default class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
     this.state = { hasError: false, error: null };
+    this.reloadTimer = null;
   }
 
   static getDerivedStateFromError(error) {
@@ -20,6 +21,18 @@ export default class ErrorBoundary extends React.Component {
       }));
     } catch {
       // Ignore logging errors.
+    }
+    if (typeof window !== "undefined") {
+      this.reloadTimer = window.setTimeout(() => {
+        window.location.reload();
+      }, 3000);
+    }
+  }
+
+  componentWillUnmount() {
+    if (this.reloadTimer) {
+      window.clearTimeout(this.reloadTimer);
+      this.reloadTimer = null;
     }
   }
 
@@ -54,7 +67,7 @@ export default class ErrorBoundary extends React.Component {
                 {lastErrorDetails}
               </pre>
             )}
-            <p>Please tap Return to Home.</p>
+            <p>The kiosk will reload automatically in a moment.</p>
             <div className="actions">
               <button className="btn btn-primary" onClick={() => window.location.reload()}>
                 Return to Home

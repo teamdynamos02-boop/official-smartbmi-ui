@@ -1433,3 +1433,231 @@ body {
   min-height: 40px !important;
   height: 40px !important;
 }
+
+/* Final kiosk structural expansion: this file loads after styles.css. */
+html,
+body,
+#root {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 100vh !important;
+  overflow: hidden !important;
+}
+
+.kiosk-shell {
+  width: 100vw !important;
+  height: 100vh !important;
+  min-height: 100vh !important;
+  padding: 5px !important;
+  place-items: stretch !important;
+  overflow: hidden !important;
+}
+
+.tablet-frame {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  max-height: none !important;
+  aspect-ratio: auto !important;
+  grid-template-rows: auto minmax(0, 1fr) !important;
+}
+
+.screen {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: hidden !important;
+}
+
+.screen:has(.measure-page) .page-wrap,
+.screen:has(.result-page) .page-wrap,
+.screen:has(.analytics-page) .page-wrap,
+.screen:has(.camera-page) .page-wrap,
+.screen:has(.reminders-page) .page-wrap,
+.screen:has(.terms-page) .page-wrap,
+.screen:has(.name-stage) .page-wrap {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  max-height: none !important;
+  min-height: 0 !important;
+  align-items: stretch !important;
+  justify-content: stretch !important;
+}
+
+.screen:has(.reminders-page) .page-wrap,
+.screen:has(.facial-shell-identification) .page-wrap {
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.page-with-actions,
+.page-with-actions > .screen-grid,
+.page-with-actions > .screen-grid.single-col {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  max-height: none !important;
+  min-height: 0 !important;
+}
+
+.measure-page {
+  grid-template-rows: minmax(0, 1fr) 58px !important;
+}
+
+.measure-page .screen-grid,
+.measure-page .screen-grid.single-col {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  grid-template-rows: minmax(0, 1fr) !important;
+  place-items: stretch !important;
+}
+
+.measure-page .measure-panel,
+.measure-page .panel.panel-large.measure-panel {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  max-height: none !important;
+  margin: 0 !important;
+  transform: none !important;
+  align-content: stretch !important;
+  grid-template-rows: auto auto auto minmax(270px, 1.1fr) minmax(190px, .7fr) 42px !important;
+}
+
+.measure-page .measure-visual-stage {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 270px !important;
+}
+
+.measure-page .measure-meter,
+.measure-page .meter-wrap {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  min-height: 190px !important;
+}
+
+.measure-page .measure-meter strong,
+.measure-page .meter-wrap strong {
+  font-size: clamp(5.4rem, 9.8vw, 9rem) !important;
+  text-align: right !important;
+}
+
+.reminders-page.reminders-page-exact {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.reminders-page.reminders-page-exact > .reminders-exact-shell,
+.reminders-page-minimal.reminders-page-exact .reminders-exact-shell {
+  width: 75vw !important;
+  max-width: none !important;
+  height: 82vh !important;
+  max-height: none !important;
+  grid-template-rows: minmax(0, 1fr) auto !important;
+  align-items: stretch !important;
+}
+
+.reminders-page.reminders-page-exact .reminders-exact-board,
+.reminders-page-minimal.reminders-page-exact .reminders-exact-board {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  align-self: stretch !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr) !important;
+}
+
+.reminders-page.reminders-page-exact .reminders-exact-panel,
+.reminders-page-minimal.reminders-page-exact .reminders-exact-panel {
+  height: 100% !important;
+  min-height: 0 !important;
+}
+
+.result-page {
+  grid-template-rows: minmax(0, 1fr) 66px !important;
+}
+
+.result-page .screen-grid {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  grid-template-columns: minmax(0, 1.58fr) minmax(410px, .95fr) !important;
+}
+
+.result-page .result-panel,
+.result-page .result-message-panel {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  max-height: none !important;
+}
+
+.analytics-page {
+  grid-template-rows: minmax(0, 1fr) 66px !important;
+}
+
+.analytics-layout {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  max-height: none !important;
+  grid-template-columns: minmax(0, 1.6fr) minmax(390px, .92fr) !important;
+  gap: 20px !important;
+}
+
+.analytics-main-panel,
+.analytics-advice-panel,
+.analytics-history-panel,
+.analytics-history-list {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  max-height: none !important;
+  min-height: 0 !important;
+}
+
+.analytics-advice-panel {
+  grid-template-rows: auto minmax(0, 1fr) auto !important;
+}
+
+.camera-page {
+  grid-template-rows: minmax(0, 1fr) 66px !important;
+}
+
+.camera-page .screen-grid.single-col,
+.camera-page .camera-view {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  max-height: none !important;
+  min-height: 0 !important;
+}
+
+.facial-shell-identification {
+  width: min(62vw, 640px) !important;
+  max-width: none !important;
+  height: 100% !important;
+  max-height: none !important;
+}
+
+.facial-shell-registration {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  max-height: none !important;
+}
+
+.facial-shell-identification .facial-camera-orb {
+  width: min(50vh, 430px, 44vw) !important;
+}
+
+.facial-shell-registration .facial-top-rail {
+  width: min(86vw, 980px) !important;
+}
+
+.facial-shell-registration .facial-camera-orb {
+  width: min(56vh, 500px, 44vw) !important;
+}

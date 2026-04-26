@@ -1,7 +1,7 @@
 import VirtualKeyboard from "../components/VirtualKeyboard";
 import { Mars, Venus } from "lucide-react";
 
-export default function InputPage({ value, onChange, onBack, onNext }) {
+export default function InputPage({ value, onChange, onBack, onNext, onCancel }) {
   const ageValue = String(value?.age ?? "");
   const sexValue = String(value?.sex ?? "");
   const num = Number(ageValue);
@@ -22,6 +22,7 @@ export default function InputPage({ value, onChange, onBack, onNext }) {
             <h3 className="input-page-section-title">Sex</h3>
             <div className="sex-buttons input-page-sex-buttons">
               <button
+                type="button"
                 className={`btn sex-btn sex-btn-male ${sexValue === "Male" ? "sex-btn-active" : ""}`}
                 onClick={() => onChange({ ...value, sex: "Male" })}
               >
@@ -29,6 +30,7 @@ export default function InputPage({ value, onChange, onBack, onNext }) {
                 Male
               </button>
               <button
+                type="button"
                 className={`btn sex-btn sex-btn-female ${sexValue === "Female" ? "sex-btn-active" : ""}`}
                 onClick={() => onChange({ ...value, sex: "Female" })}
               >
@@ -57,8 +59,9 @@ export default function InputPage({ value, onChange, onBack, onNext }) {
         </div>
       </div>
       <div className="actions age-actions">
-        <button className="btn" onClick={onBack}>Back</button>
-        <button className="btn btn-primary btn-xl age-next-btn" disabled={!isValid} onClick={onNext}>Next</button>
+        {typeof onCancel === "function" && <button type="button" className="btn" onClick={onCancel}>Cancel</button>}
+        <button type="button" className="btn" onClick={onBack}>Back</button>
+        <button type="button" className="btn btn-primary btn-xl age-next-btn" disabled={!isValid} onClick={onNext}>Next</button>
       </div>
     </div>
   );

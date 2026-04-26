@@ -24,10 +24,7 @@ async function configureCameraTrack(track) {
   if (whiteBalanceMode) advanced.push({ whiteBalanceMode });
   if (resizeMode) advanced.push({ resizeMode });
 
-  const constraints = {
-    advanced,
-  };
-
+  const constraints = { advanced };
   if (supported.width) constraints.width = { ideal: 1920 };
   if (supported.height) constraints.height = { ideal: 1080 };
   if (supported.frameRate) constraints.frameRate = { ideal: 30, max: 30 };
@@ -37,7 +34,9 @@ async function configureCameraTrack(track) {
       await track.applyConstraints(constraints);
     }
   } catch (error) {
-    console.warn("Camera auto-focus constraints were not applied:", error);
+    if (String(import.meta.env.VITE_CAMERA_DEBUG ?? "false").toLowerCase() === "true") {
+      console.warn("Camera auto-focus constraints were not applied:", error);
+    }
   }
 }
 
@@ -54,6 +53,7 @@ export default function CameraPage({
   onRetry,
   onPopupAction,
   onVideoReady,
+  previewMode = false,
 }) {
   const videoRef = useRef(null);
   const [cameraState, setCameraState] = useState("initializing");
@@ -104,11 +104,14 @@ export default function CameraPage({
         actionLabel: popup.actionLabel,
       }
     : {
-        title: title,
+        title,
         detail: mode === "registration" && !isDone && !isIssue ? directionalInstruction : message,
         tone: isDone ? "success" : (isIssue ? "error" : "info"),
       };
-  const statusProgress = activeNotice.tone === "success" ? 100 : 0;
+  const statusProgress = activeNotice.tone === "success"
+    ? 100
+    : Math.max(0, Math.min(100, Number(progress) || 0));
+  const displayTitle = mode === "identification" ? "Face Recognition" : title;
 
   useEffect(() => {
     let stream;
@@ -148,86 +151,168 @@ export default function CameraPage({
     startCamera();
     return () => {
       if (typeof onVideoReady === "function") onVideoReady(null);
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop());
-      }
+      if (stream) stream.getTracks().forEach((track) => track.stop());
     };
-  }, []);
+  }, [onVideoReady]);
 
   return (
     <div className="page-with-actions camera-page">
       <div className="screen-grid single-col">
-        <div className="panel panel-large camera-view">
-          <div className={`facial-shell ${mode === "registration" ? "facial-shell-registration" : ""}`}>
+        <div
+          style={{
+            width: "min(760px, 100%)",
+            margin: "0 auto",
+            paddingTop: 8,
+          }}
+        >
+          <div
+            style={{
+              width: "min(640px, 100%)",
+              margin: "0 auto",
+              padding: "26px 28px 24px",
+              borderRadius: 24,
+              background: "#fff",
+              border: "1px solid rgba(84,172,191,.18)",
+              boxShadow: "0 24px 56px rgba(2,56,89,.14)",
+              display: "grid",
+              gap: 18,
+            }}
+          >
             {(mode === "identification" || mode === "registration") && (
-              <h2 className="facial-page-title">{title}</h2>
+              <h2 style={{ fontSize: "28px", margin: 0, textAlign: "center", color: "#214f66", fontWeight: 700 }}>
+                {displayTitle}
+              </h2>
             )}
-            <div className={`facial-top-rail facial-top-rail-${activeNotice.tone}`}>
-              {mode === "registration" && (
-                <div className={`facial-rail-cue facial-rail-cue-left facial-side-cue-${poseDirection}`} aria-hidden="true">
-                  <div className={`facial-direction-stack facial-direction-stack-${poseDirection}`}>
-                    <span className="facial-chevron" />
-                    <span className="facial-chevron" />
-                    <span className="facial-chevron" />
-                  </div>
-                </div>
-              )}
-              <div className="facial-top-copy">
+
+            <div
+              style={{
+                minHeight: 56,
+                padding: "14px 18px",
+                borderRadius: 999,
+                background: "#e6f1f8",
+                border: "1px solid rgba(84,172,191,.18)",
+                display: "grid",
+                placeItems: "center",
+              }}
+            >
+              <div style={{ display: "grid", placeItems: "center", textAlign: "center" }}>
                 {mode !== "identification" && mode !== "registration" && (
-                  <span className="facial-message facial-message-primary">{activeNotice.title}</span>
+                  <span>{activeNotice.title}</span>
                 )}
-                {activeNotice.detail && <span className="facial-message">{activeNotice.detail}</span>}
+                {activeNotice.detail && (
+                  <span style={{ fontSize: "16px", fontWeight: 600, color: "#33667f" }}>
+                    {activeNotice.detail}
+                  </span>
+                )}
               </div>
-              {mode === "registration" && (
-                <div className={`facial-rail-cue facial-rail-cue-right facial-side-cue-${poseDirection}`} aria-hidden="true">
-                  <div className={`facial-direction-stack facial-direction-stack-${poseDirection}`}>
-                    <span className="facial-chevron" />
-                    <span className="facial-chevron" />
-                    <span className="facial-chevron" />
-                  </div>
-                </div>
-              )}
-              {activeNotice.action && activeNotice.actionLabel && typeof onPopupAction === "function" ? (
-                <div className="facial-inline-actions">
-                  {activeNotice.action && activeNotice.actionLabel && typeof onPopupAction === "function" && (
-                    <button
-                      type="button"
-                      className="btn btn-primary facial-inline-action-btn"
-                      onClick={() => onPopupAction(activeNotice.action)}
+            </div>
+
+            <div style={{ display: "grid", placeItems: "center", gap: 14 }}>
+              <div
+                style={{
+                  width: 360,
+                  height: 360,
+                  borderRadius: "50%",
+                  padding: 10,
+                  background: "linear-gradient(180deg,#d9f0f8,#cfeaf5)",
+                  boxShadow: "0 18px 42px rgba(44,186,207,.16)",
+                }}
+              >
+                <div
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    borderRadius: "50%",
+                    border: "5px solid #2ea5c6",
+                    overflow: "hidden",
+                    position: "relative",
+                    background: "#0b2a3a",
+                  }}
+                >
+                  <video
+                    ref={videoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="camera-feed"
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                      display: cameraState === "ready" ? "block" : "none",
+                    }}
+                  />
+                  {cameraState !== "ready" && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        inset: 0,
+                        borderRadius: "50%",
+                        background: previewMode
+                          ? "radial-gradient(circle at 50% 34%, rgba(224,199,179,.92) 0 18%, transparent 19%), radial-gradient(circle at 50% 63%, rgba(44,28,40,.82) 0 25%, transparent 26%), radial-gradient(circle at 50% 78%, rgba(31,66,91,.9) 0 23%, transparent 24%), linear-gradient(180deg, #556b88 0%, #22384f 48%, #0f2232 100%)"
+                          : "#0b2a3a",
+                        display: "grid",
+                        placeItems: "center",
+                        color: "#d7eef7",
+                        fontSize: "14px",
+                        textAlign: "center",
+                        padding: "20px",
+                      }}
                     >
-                      {activeNotice.actionLabel}
-                    </button>
+                      {!previewMode && (
+                        <span>{cameraState === "denied" ? "Camera preview unavailable" : "Starting camera..."}</span>
+                      )}
+                    </div>
                   )}
                 </div>
-              ) : null}
-            </div>
-
-            <div className="facial-stage">
-              <div className="facial-camera-orb">
-                <div className="facial-camera-ring" aria-hidden="true" />
-                <div className="facial-camera-lens">
-                  <video ref={videoRef} autoPlay playsInline muted className="camera-feed facial-camera-feed" />
-                </div>
-                <div className={`facial-face-layout ${mode === "identification" ? "facial-face-layout-identify" : "facial-face-layout-register"}`} aria-hidden="true">
-                  <svg viewBox="0 0 220 220" className="face-layout-svg">
-                    <ellipse cx="110" cy="110" rx="92" ry="108" className="face-layout-line" />
-                    <ellipse cx="76" cy="96" rx="12" ry="9" className="face-layout-line" />
-                    <ellipse cx="144" cy="96" rx="12" ry="9" className="face-layout-line" />
-                    <path d="M110 106v38" className="face-layout-line" />
-                    <path d="M76 162c14 12 54 12 68 0" className="face-layout-line" />
-                  </svg>
-                </div>
               </div>
-              {cameraState !== "ready" && cameraError && <p className="camera-error facial-camera-error">{cameraError}</p>}
+
+              {!previewMode && cameraState !== "ready" && cameraError && (
+                <p
+                  style={{
+                    margin: 0,
+                    padding: "14px 18px",
+                    borderRadius: 14,
+                    background: "#fff1f3",
+                    border: "1px solid rgba(228,101,123,.35)",
+                    color: "#a5283f",
+                    fontSize: "14px",
+                    fontWeight: 600,
+                    textAlign: "center",
+                  }}
+                >
+                  {cameraError}
+                </p>
+              )}
             </div>
 
-            <div className="facial-progress">
-              <div className="facial-progress-head">
+            <div
+              style={{
+                maxWidth: 420,
+                margin: "0 auto",
+                width: "100%",
+                padding: "18px 18px 16px",
+                borderRadius: 18,
+                background: "#f4fbfe",
+                border: "1px solid rgba(84,172,191,.16)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 12,
+                  fontSize: "16px",
+                  fontWeight: 700,
+                  color: "#33667f",
+                }}
+              >
                 <span>Progress</span>
-                <strong>{statusProgress}%</strong>
+                <strong style={{ color: "#18789d" }}>{statusProgress}%</strong>
               </div>
-              <div className="facial-progress-track">
-                <div className="facial-progress-fill" style={{ width: `${statusProgress}%` }} />
+              <div style={{ height: 12, borderRadius: 999, background: "#d6edf6", overflow: "hidden" }}>
+                <div style={{ width: `${statusProgress}%`, height: "100%", borderRadius: 999, background: "linear-gradient(90deg,#2bb4d0,#7fd8ea)" }} />
               </div>
             </div>
           </div>
@@ -235,14 +320,10 @@ export default function CameraPage({
       </div>
 
       <div className="actions camera-actions">
-        {returnMessage && <p className="camera-returning-msg">{returnMessage}</p>}
+        {typeof onNext === "function" && (
+          <button className="btn camera-continue-btn" onClick={onNext}>Continue</button>
+        )}
         <button className="btn camera-cancel-btn" onClick={onCancel}>Cancel</button>
-        {typeof onRetry === "function" && (
-          <button className="btn btn-primary camera-next-btn" onClick={onRetry}>Retry</button>
-        )}
-        {isDone && typeof onNext === "function" && (
-          <button className="btn btn-primary camera-next-btn" onClick={onNext}>Next</button>
-        )}
       </div>
     </div>
   );
